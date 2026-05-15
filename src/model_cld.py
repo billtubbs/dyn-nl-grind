@@ -54,6 +54,34 @@ OUTPUT_NAMES = [
     "product_size",          # y_PSE (%)
 ]
 
+# Steady-state operating condition from Table 4 (Le Roux & Steyn, 2022).
+# States from Table 5 (calculated via the step-wise calibration procedure).
+STEADY_STATE_INPUTS = {
+    "feed_ore_rate":           1191.0,  # u_MFO  (t/h)
+    "water_ore_ratio":            0.572,  # u_rMIW (-)
+    "critical_speed_fraction":    0.768,  # u_phic (-)
+    "sump_feed_water":          870.0,  # u_SFW  (m³/h)
+    "cyclone_feed_flow":       2921.0,  # u_CFF  (m³/h)
+}
+
+STEADY_STATE_STATES = {
+    "water_volume":        31.0,   # x_mw  (m³)
+    "solids_volume":       31.1,   # x_ms  (m³)
+    "rock_volume":          9.84,  # x_mr  (m³)
+    "fines_volume":         5.22,  # x_mf  (m³)
+    "sump_water_volume":  133.0,   # x_sw  (m³)
+    "sump_solids_volume":  72.2,   # x_ss  (m³)
+    "sump_fines_volume":   12.1,   # x_sf  (m³)
+}
+
+STEADY_STATE_OUTPUTS = {
+    "charge_fill_fraction":  0.328,  # y_JT   (-)
+    "mill_power":           14.8,    # y_Pmill (MW)
+    "sump_level":           59.4,    # y_SLEV  (%)
+    "sump_density":          1.77,   # y_rho   (t/m³)
+    "product_size":         37.9,    # y_PSE   (%)
+}
+
 
 def build_grinding_circuit_model(
     # Densities — defaults from Table 4
