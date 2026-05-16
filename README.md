@@ -1,14 +1,100 @@
 # Grinding Circuit Simulation Model
 
-> **Note:** All equations, model structure, and parameter definitions below are sourced
-> directly from Section 2.2 of the following paper. This file is a summary of that work.
+Python implementation of the nonlinear dynamic grinding mill circuit model from:
 
-**Reference:**
-J.D. le Roux and C.W. Steyn, "Validation of a dynamic non-linear grinding circuit model
-for process control," *Minerals Engineering* 187 (2022) 107780.
-https://doi.org/10.1016/j.mineng.2022.107780
+> J.D. le Roux and C.W. Steyn, "Validation of a dynamic non-linear grinding circuit
+> model for process control," *Minerals Engineering* 187 (2022) 107780.
+> https://doi.org/10.1016/j.mineng.2022.107780
+
+The model is built with [CasADi](https://web.casadi.org/) and wrapped via the
+[casadi-models](https://github.com/billtubbs/casadi-models) library, giving
+symbolic state-space functions `f(t, x, u)` and `h(t, x, u)` that can be
+differentiated, compiled, and used directly in optimisation or estimation.
+
+## License
+
+This project is released under the [GNU General Public License v3.0](LICENSE).
 
 ---
+
+## Installation
+
+**Requirements:** Python ≥ 3.11, plus the packages listed in `pyproject.toml`.
+
+```bash
+git clone <repo-url>
+cd dyn-nl-grind
+python -m venv .venv
+source .venv/bin/activate        # Windows: .venv\Scripts\activate
+pip install -e ".[dev]"
+```
+
+`.[dev]` installs the project in editable mode and adds `pytest` for running
+the test suite.
+
+---
+
+## Quick Start
+
+### Construct the model and evaluate at a known operating point
+
+```python
+import numpy as np
+from model import build_grinding_circuit_model, STEADY_STATE_STATES, STEADY_STATE_INPUTS
+
+# charge_porosity is calibrated from Table 5: x_mb = (1 - ε_p) * J_B * v_mill = 105 m³
+charge_porosity = 1.0 - 105.0 / (0.30 * 540.9)
+
+model = build_grinding_circuit_model(charge_porosity=charge_porosity)
+# model.n=7 states, model.nu=5 inputs, model.ny=5 outputs
+
+x0 = np.array([STEADY_STATE_STATES[n] for n in model.state_names])
+u0 = np.array([STEADY_STATE_INPUTS[n] for n in model.input_names])
+
+dxdt = np.array(model.f(0.0, x0, u0)).flatten()  # state derivatives (m³/h)
+y0   = np.array(model.h(0.0, x0, u0)).flatten()   # outputs at this operating point
+```
+
+### Simulate with sump level control
+
+The open-loop model (constant `u_CFF`) is unstable — the sump drains or
+overflows without level control.  `build_grinding_circuit_model_with_sump_control`
+embeds a proportional controller that manipulates the cyclone feed pump (`u_CFF`)
+to maintain the sump level between configurable limits (default 5 %–60 %).
+
+```python
+import numpy as np
+from cas_models.continuous_time.simulate import make_n_step_simulation_function_from_model
+from model import (
+    build_grinding_circuit_model_with_sump_control,
+    STEADY_STATE_STATES, STEADY_STATE_INPUTS,
+)
+
+charge_porosity = 1.0 - 105.0 / (0.30 * 540.9)
+model = build_grinding_circuit_model_with_sump_control(charge_porosity=charge_porosity)
+# model.nu=4 inputs (u_CFF is now internal), model.ny=6 outputs (adds u_CFF as monitor)
+
+dt      = 60 / 3600        # 1-minute sample time in hours
+n_steps = int(6.0 / dt)    # 6-hour simulation
+sim = make_n_step_simulation_function_from_model(model, dt=dt, nT=n_steps)
+
+x0     = np.array([STEADY_STATE_STATES[n] for n in model.state_names])
+u0     = np.array([STEADY_STATE_INPUTS[n] for n in model.input_names])
+t_eval = np.linspace(0.0, 6.0, n_steps + 1)   # hours
+U      = np.tile(u0, (n_steps, 1))             # constant inputs, shape (n_steps, 4)
+
+X, Y = sim(t_eval, U, x0)
+X = np.array(X)   # state trajectory, shape (n_steps+1, 7)
+Y = np.array(Y)   # output trajectory, shape (n_steps+1, 6)
+```
+
+See [`open_loop_sim.py`](open_loop_sim.py) for a complete simulation script with plots.
+
+---
+
+## Model Documentation
+
+> All equations and parameter definitions below follow Section 2.2 of the paper.
 
 ## Mill Model
 
