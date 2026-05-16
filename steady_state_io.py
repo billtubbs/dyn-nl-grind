@@ -9,7 +9,7 @@ compute_ss_sweeps
     Sweep each input over a range, collecting steady-state outputs via
     warm-start Newton continuation from the nominal operating point.
 plot_main
-    Full n_cvs × n_mvs grid of steady-state gain curves with axes.
+    Full n_outputs × n_inputs grid of steady-state gain curves with axes.
 plot_abstract
     Compact version without tick marks, for qualitative analysis.
 
@@ -26,10 +26,10 @@ import matplotlib.pyplot as plt
 def _bisect_boundary(
     ss_solver, x0_stable, u_nom, j, stable_val, unstable_val, param_vals, tol
 ):
-    """Bisect to find the MV stability boundary between stable_val and unstable_val.
+    """Bisect to find the input stability boundary between stable_val and unstable_val.
 
     Works in either direction (stable_val may be above or below unstable_val).
-    Returns the last stable MV value found — a conservative estimate of the
+    Returns the last stable input value found — a conservative estimate of the
     true boundary.  Warm-starts from x0_stable throughout so Newton stays near
     convergence.
     """
@@ -51,19 +51,19 @@ def compute_ss_sweeps(
     ss_solver,
     x0_nom,
     u_nom,
-    mv_names,
-    cv_names,
+    input_names,
+    output_names,
     output_idx,
-    mv_sweeps,
-    input_names=None,
+    input_sweeps,
+    all_input_names=None,
     param_vals=None,
     find_boundary=False,
     boundary_tol=None,
 ):
     """Compute steady-state outputs over independent input sweeps.
 
-    For each MV in mv_names, holds all other inputs at nominal and sweeps
-    that input over mv_sweeps[mv_name], collecting steady-state CV values.
+    For each input in input_names, holds all other inputs at nominal and sweeps
+    that input over input_sweeps[input_name], collecting steady-state output values.
     Uses warm-start Newton continuation outward from the nominal point in
     both directions.
 
@@ -76,18 +76,18 @@ def compute_ss_sweeps(
         Nominal state vector used as the initial guess for the Newton solver.
     u_nom : array-like, shape (nu,)
         Nominal input vector.
-    mv_names : list of str
-        Names of inputs to sweep (manipulated variables).
-    cv_names : list of str
-        Names of outputs to collect (controlled variables).
+    input_names : list of str
+        Names of inputs to sweep.
+    output_names : list of str
+        Names of outputs to collect.
     output_idx : dict
         Mapping ``{output_name: index}`` in the y_ss vector.
-    mv_sweeps : dict
-        ``{mv_name: sorted_array_of_values}`` for each MV; arrays should
+    input_sweeps : dict
+        ``{input_name: sorted_array_of_values}`` for each input; arrays should
         include or straddle the nominal value so warm-starting works.
-    input_names : list of str, optional
+    all_input_names : list of str, optional
         Ordered list of all model input names matching u_nom.  Used to
-        locate each MV's position in u_nom.  If None, mv_names is assumed
+        locate each input's position in u_nom.  If None, input_names is assumed
         to match u_nom in order and length.
     param_vals : dict, optional
         Parameter values forwarded to ss_solver.  Defaults to ``{}``.
@@ -98,44 +98,44 @@ def compute_ss_sweeps(
         Returns ``(results, boundaries)`` instead of just ``results``.
         Default False.
     boundary_tol : float, optional
-        Absolute tolerance on the MV value for bisection stopping criterion.
+        Absolute tolerance on the input value for bisection stopping criterion.
         Defaults to 1/10 of the grid step size, giving roughly 4 bisection
         iterations per boundary.  Only used when ``find_boundary=True``.
 
     Returns
     -------
     results : dict
-        ``{mv_name: {cv_name: np.ndarray}}`` of steady-state values.
+        ``{input_name: {output_name: np.ndarray}}`` of steady-state values.
     boundaries : dict
         Only returned when ``find_boundary=True``.
-        ``{mv_name: {"upper": float or None, "lower": float or None}}``
-        where each value is the last stable MV value found by bisection, or
+        ``{input_name: {"upper": float or None, "lower": float or None}}``
+        where each value is the last stable input value found by bisection, or
         None if no boundary was encountered in that direction.
     """
     if param_vals is None:
         param_vals = {}
     u_nom = np.asarray(u_nom, dtype=float)
 
-    if input_names is not None:
-        mv_u_idx = {name: input_names.index(name) for name in mv_names}
+    if all_input_names is not None:
+        input_u_idx = {name: all_input_names.index(name) for name in input_names}
     else:
-        mv_u_idx = {name: j for j, name in enumerate(mv_names)}
+        input_u_idx = {name: j for j, name in enumerate(input_names)}
 
     print("\nComputing steady-state sweeps...")
     results = {}
     boundaries = {}
-    for mv_name in mv_names:
-        j = mv_u_idx[mv_name]
-        mv_vals = np.asarray(mv_sweeps[mv_name])
-        n_pts = len(mv_vals)
-        cv_vals = {cv: np.full(n_pts, np.nan) for cv in cv_names}
-        nom_idx = int(np.searchsorted(mv_vals, u_nom[j]))
+    for input_name in input_names:
+        j = input_u_idx[input_name]
+        input_vals = np.asarray(input_sweeps[input_name])
+        n_pts = len(input_vals)
+        output_vals = {out: np.full(n_pts, np.nan) for out in output_names}
+        nom_idx = int(np.searchsorted(input_vals, u_nom[j]))
         upper_boundary = None
         lower_boundary = None
 
         # Default tolerance: 1/10 of the grid step size (~4 bisection iterations)
         if find_boundary and boundary_tol is None:
-            step = (mv_vals[-1] - mv_vals[0]) / (n_pts - 1)
+            step = (input_vals[-1] - input_vals[0]) / (n_pts - 1)
             tol = step / 10.0
         else:
             tol = boundary_tol
@@ -143,42 +143,55 @@ def compute_ss_sweeps(
         x0 = np.array(x0_nom, dtype=float)
         for k in range(nom_idx, n_pts):
             u = u_nom.copy()
-            u[j] = mv_vals[k]
+            u[j] = input_vals[k]
             try:
                 x_ss, y_ss = ss_solver(x0, u, param_vals)
             except RuntimeError:
                 if find_boundary and k > nom_idx:
                     upper_boundary = _bisect_boundary(
-                        ss_solver, x0, u_nom, j,
-                        stable_val=mv_vals[k - 1], unstable_val=mv_vals[k],
-                        param_vals=param_vals, tol=tol,
+                        ss_solver,
+                        x0,
+                        u_nom,
+                        j,
+                        stable_val=input_vals[k - 1],
+                        unstable_val=input_vals[k],
+                        param_vals=param_vals,
+                        tol=tol,
                     )
                 break
-            for cv in cv_names:
-                cv_vals[cv][k] = y_ss[output_idx[cv]]
+            for out in output_names:
+                output_vals[out][k] = y_ss[output_idx[out]]
             x0 = x_ss
 
         x0 = np.array(x0_nom, dtype=float)
         for k in range(nom_idx - 1, -1, -1):
             u = u_nom.copy()
-            u[j] = mv_vals[k]
+            u[j] = input_vals[k]
             try:
                 x_ss, y_ss = ss_solver(x0, u, param_vals)
             except RuntimeError:
                 if find_boundary and k < nom_idx - 1:
                     lower_boundary = _bisect_boundary(
-                        ss_solver, x0, u_nom, j,
-                        stable_val=mv_vals[k + 1], unstable_val=mv_vals[k],
-                        param_vals=param_vals, tol=tol,
+                        ss_solver,
+                        x0,
+                        u_nom,
+                        j,
+                        stable_val=input_vals[k + 1],
+                        unstable_val=input_vals[k],
+                        param_vals=param_vals,
+                        tol=tol,
                     )
                 break
-            for cv in cv_names:
-                cv_vals[cv][k] = y_ss[output_idx[cv]]
+            for out in output_names:
+                output_vals[out][k] = y_ss[output_idx[out]]
             x0 = x_ss
 
-        results[mv_name] = cv_vals
-        boundaries[mv_name] = {"upper": upper_boundary, "lower": lower_boundary}
-        print(f"  {mv_name}: {n_pts} points")
+        results[input_name] = output_vals
+        boundaries[input_name] = {
+            "upper": upper_boundary,
+            "lower": lower_boundary,
+        }
+        print(f"  {input_name}: {n_pts} points")
 
     if find_boundary:
         return results, boundaries
@@ -213,9 +226,9 @@ def _abstract_label(name, info):
 
 def plot_main(
     results,
-    mv_names,
-    cv_names,
-    mv_sweeps,
+    input_names,
+    output_names,
+    input_sweeps,
     u_nom_dict,
     y_nom_dict,
     input_info=None,
@@ -226,30 +239,30 @@ def plot_main(
 ):
     """Steady-state I/O matrix plot with full axis labels.
 
-    Produces an n_cvs × n_mvs grid where each cell shows the steady-state
-    value of one CV as a function of one MV (all others held at nominal).
+    Produces an n_outputs × n_inputs grid where each cell shows the steady-state
+    value of one output as a function of one input (all others held at nominal).
     Dashed crosshairs mark the nominal operating point.
 
     Parameters
     ----------
     results : dict
         Output of :func:`compute_ss_sweeps`.
-    mv_names : list of str
-        Input names — one column per MV.
-    cv_names : list of str
-        Output names — one row per CV.
-    mv_sweeps : dict
-        ``{mv_name: array_of_values}`` — the sweep ranges.
+    input_names : list of str
+        Input names — one column per input.
+    output_names : list of str
+        Output names — one row per output.
+    input_sweeps : dict
+        ``{input_name: array_of_values}`` — the sweep ranges.
     u_nom_dict : dict
-        ``{mv_name: nominal_value}`` for each MV.
+        ``{input_name: nominal_value}`` for each input.
     y_nom_dict : dict
-        ``{cv_name: nominal_value}`` for each CV.
+        ``{output_name: nominal_value}`` for each output.
     input_info : dict, optional
-        ``{mv_name: {"label", "symbol", "units"}}`` for x-axis labels.
+        ``{input_name: {"label", "symbol", "units"}}`` for x-axis labels.
     output_info : dict, optional
-        ``{cv_name: {"label", "symbol", "units"}}`` for y-axis labels.
+        ``{output_name: {"label", "symbol", "units"}}`` for y-axis labels.
     boundaries : dict, optional
-        ``{mv_name: {"upper": float or None, "lower": float or None}}`` as
+        ``{input_name: {"upper": float or None, "lower": float or None}}`` as
         returned by :func:`compute_ss_sweeps` with ``find_boundary=True``.
         Where present, vertical red dashed lines mark the stability boundary.
     title : str, optional
@@ -261,48 +274,56 @@ def plot_main(
     -------
     matplotlib.figure.Figure
     """
-    n_cvs = len(cv_names)
-    n_mvs = len(mv_names)
+    n_outputs = len(output_names)
+    n_inputs = len(input_names)
 
     fig, axs = plt.subplots(
-        n_cvs,
-        n_mvs,
-        figsize=(3.0 * n_mvs, 2.5 * n_cvs),
+        n_outputs,
+        n_inputs,
+        figsize=(1.25 + 2 * n_inputs, 1 + 1.5 * n_outputs),
         sharex="col",
         sharey="row",
         constrained_layout=True,
     )
-    if n_cvs == 1:
+    if n_outputs == 1:
         axs = axs[np.newaxis, :]
-    if n_mvs == 1:
+    if n_inputs == 1:
         axs = axs[:, np.newaxis]
 
-    for col, mv_name in enumerate(mv_names):
-        mv_vals = np.asarray(mv_sweeps[mv_name])
-        nom_mv = u_nom_dict[mv_name]
-        mv_bounds = (boundaries or {}).get(mv_name, {})
+    for col, input_name in enumerate(input_names):
+        input_vals = np.asarray(input_sweeps[input_name])
+        nom_input = u_nom_dict[input_name]
+        input_bounds = (boundaries or {}).get(input_name, {})
 
-        for row, cv_name in enumerate(cv_names):
+        for row, output_name in enumerate(output_names):
             ax = axs[row, col]
-            ax.plot(mv_vals, results[mv_name][cv_name], color="C0")
-            ax.axvline(nom_mv, color="k", linewidth=0.6, linestyle="--", alpha=0.6)
+            ax.plot(input_vals, results[input_name][output_name], color="C0")
+            ax.axvline(
+                nom_input, color="k", linewidth=0.6, linestyle="--", alpha=0.6
+            )
             ax.axhline(
-                y_nom_dict[cv_name],
+                y_nom_dict[output_name],
                 color="k",
                 linewidth=0.6,
                 linestyle="--",
                 alpha=0.6,
             )
-            ax.plot(nom_mv, y_nom_dict[cv_name], "ko", markersize=4)
-            for bound in (mv_bounds.get("upper"), mv_bounds.get("lower")):
+            ax.plot(nom_input, y_nom_dict[output_name], "ko", markersize=4)
+            for bound in (input_bounds.get("upper"), input_bounds.get("lower")):
                 if bound is not None:
-                    ax.axvline(bound, color="r", linewidth=0.8, linestyle="--", alpha=0.7)
+                    ax.axvline(
+                        bound,
+                        color="r",
+                        linewidth=0.8,
+                        linestyle="--",
+                        alpha=0.7,
+                    )
             ax.grid(True, alpha=0.3)
 
             if col == 0:
-                ax.set_ylabel(_axis_label(cv_name, output_info), fontsize=8)
-            if row == n_cvs - 1:
-                ax.set_xlabel(_axis_label(mv_name, input_info), fontsize=7)
+                ax.set_ylabel(_axis_label(output_name, output_info), fontsize=8)
+            if row == n_outputs - 1:
+                ax.set_xlabel(_axis_label(input_name, input_info), fontsize=7)
 
     fig.suptitle(title or "Steady-state I/O characteristics", fontsize=9)
 
@@ -314,9 +335,9 @@ def plot_main(
 
 def plot_abstract(
     results,
-    mv_names,
-    cv_names,
-    mv_sweeps,
+    input_names,
+    output_names,
+    input_sweeps,
     u_nom_dict,
     y_nom_dict,
     input_info=None,
@@ -324,7 +345,7 @@ def plot_abstract(
     boundaries=None,
     title=None,
     save_path=None,
-    subplot_size=(1.75, 1.75),
+    subplot_size=(1.5, 1.5),
 ):
     """Compact steady-state I/O matrix plot without tick marks.
 
@@ -335,22 +356,22 @@ def plot_abstract(
     ----------
     results : dict
         Output of :func:`compute_ss_sweeps`.
-    mv_names : list of str
-        Input names — one column per MV.
-    cv_names : list of str
-        Output names — one row per CV.
-    mv_sweeps : dict
-        ``{mv_name: array_of_values}`` — the sweep ranges.
+    input_names : list of str
+        Input names — one column per input.
+    output_names : list of str
+        Output names — one row per output.
+    input_sweeps : dict
+        ``{input_name: array_of_values}`` — the sweep ranges.
     u_nom_dict : dict
-        ``{mv_name: nominal_value}`` for each MV.
+        ``{input_name: nominal_value}`` for each input.
     y_nom_dict : dict
-        ``{cv_name: nominal_value}`` for each CV.
+        ``{output_name: nominal_value}`` for each output.
     input_info : dict, optional
-        ``{mv_name: {"label", "symbol", "units"}}`` for axis labels.
+        ``{input_name: {"label", "symbol", "units"}}`` for axis labels.
     output_info : dict, optional
-        ``{cv_name: {"label", "symbol", "units"}}`` for axis labels.
+        ``{output_name: {"label", "symbol", "units"}}`` for axis labels.
     boundaries : dict, optional
-        ``{mv_name: {"upper": float or None, "lower": float or None}}`` as
+        ``{input_name: {"upper": float or None, "lower": float or None}}`` as
         returned by :func:`compute_ss_sweeps` with ``find_boundary=True``.
         Where present, vertical red dashed lines mark the stability boundary.
     title : str, optional
@@ -364,42 +385,50 @@ def plot_abstract(
     -------
     matplotlib.figure.Figure
     """
-    n_cvs = len(cv_names)
-    n_mvs = len(mv_names)
+    n_outputs = len(output_names)
+    n_inputs = len(input_names)
 
     fig, axs = plt.subplots(
-        n_cvs,
-        n_mvs,
-        figsize=(subplot_size[0] * n_mvs, subplot_size[1] * n_cvs),
+        n_outputs,
+        n_inputs,
+        figsize=(subplot_size[0] * n_inputs, subplot_size[1] * n_outputs),
         sharex="col",
         sharey="row",
         gridspec_kw={"hspace": 0, "wspace": 0},
     )
-    if n_cvs == 1:
+    if n_outputs == 1:
         axs = axs[np.newaxis, :]
-    if n_mvs == 1:
+    if n_inputs == 1:
         axs = axs[:, np.newaxis]
 
-    for col, mv_name in enumerate(mv_names):
-        mv_vals = np.asarray(mv_sweeps[mv_name])
-        nom_mv = u_nom_dict[mv_name]
-        mv_bounds = (boundaries or {}).get(mv_name, {})
+    for col, input_name in enumerate(input_names):
+        input_vals = np.asarray(input_sweeps[input_name])
+        nom_input = u_nom_dict[input_name]
+        input_bounds = (boundaries or {}).get(input_name, {})
 
-        for row, cv_name in enumerate(cv_names):
+        for row, output_name in enumerate(output_names):
             ax = axs[row, col]
-            ax.plot(mv_vals, results[mv_name][cv_name], color="C0")
-            ax.axvline(nom_mv, color="k", linewidth=0.6, linestyle="--", alpha=0.6)
+            ax.plot(input_vals, results[input_name][output_name], color="C0")
+            ax.axvline(
+                nom_input, color="k", linewidth=0.6, linestyle="--", alpha=0.6
+            )
             ax.axhline(
-                y_nom_dict[cv_name],
+                y_nom_dict[output_name],
                 color="k",
                 linewidth=0.6,
                 linestyle="--",
                 alpha=0.6,
             )
-            ax.plot(nom_mv, y_nom_dict[cv_name], "ko", markersize=3)
-            for bound in (mv_bounds.get("upper"), mv_bounds.get("lower")):
+            ax.plot(nom_input, y_nom_dict[output_name], "ko", markersize=3)
+            for bound in (input_bounds.get("upper"), input_bounds.get("lower")):
                 if bound is not None:
-                    ax.axvline(bound, color="r", linewidth=0.8, linestyle="--", alpha=0.7)
+                    ax.axvline(
+                        bound,
+                        color="r",
+                        linewidth=0.8,
+                        linestyle="--",
+                        alpha=0.7,
+                    )
             ax.margins(0.12)
             ax.tick_params(
                 left=False, bottom=False, labelleft=False, labelbottom=False
@@ -407,9 +436,9 @@ def plot_abstract(
             ax.grid(False)
 
             if col == 0:
-                ax.set_ylabel(_abstract_label(cv_name, output_info))
-            if row == n_cvs - 1:
-                ax.set_xlabel(_abstract_label(mv_name, input_info))
+                ax.set_ylabel(_abstract_label(output_name, output_info))
+            if row == n_outputs - 1:
+                ax.set_xlabel(_abstract_label(input_name, input_info))
 
     fig.tight_layout(h_pad=0, w_pad=0, rect=[0, 0, 1, 0.94])
     fig.suptitle(title or "Steady-state I/O characteristics")
@@ -493,68 +522,68 @@ if __name__ == "__main__":
     ss_solver = make_steady_state_solver(model)
     print(f"  Model: n={model.n}, nu={model.nu}, ny={model.ny}")
 
-    MV_NAMES = model.input_names   # 4 free inputs (cyclone_feed_flow is internal)
-    CV_NAMES = model.output_names  # 6 outputs (5 process + cyclone_feed_flow)
+    INPUT_NAMES = model.input_names  # 4 free inputs
+    OUTPUT_NAMES = model.output_names  # 6 outputs (5 process + cyclone_feed_flow)
 
     # ── Compute actual nominal steady state from paper's inputs ──────────
-    u_nom = np.array([STEADY_STATE_INPUTS[n] for n in MV_NAMES])
+    u_nom = np.array([STEADY_STATE_INPUTS[n] for n in INPUT_NAMES])
     x0_guess = np.array([STEADY_STATE_STATES[n] for n in model.state_names])
     param_vals = {}  # all parameters are concrete numerics in the default model
 
     x_ss_nom, y_ss_nom = ss_solver(x0_guess, u_nom, param_vals)
-    u_nom_dict = dict(zip(MV_NAMES, u_nom))
-    y_nom_dict = dict(zip(CV_NAMES, y_ss_nom))
+    u_nom_dict = dict(zip(INPUT_NAMES, u_nom))
+    y_nom_dict = dict(zip(OUTPUT_NAMES, y_ss_nom))
 
     print("\nNominal steady state:")
-    for name, val in zip(CV_NAMES, y_ss_nom):
+    for name, val in zip(OUTPUT_NAMES, y_ss_nom):
         print(f"  {name:<25} {val:.4g}")
 
-    # ── Input sweep ranges: ±10 % of nominal, 31 points each ─────────────
+    # ── Input sweep ranges: ±20% of nominal, 31 points each ─────────────
     SWEEP_FRACTION = 0.20
     N_SWEEP = 31
-    MV_SWEEPS = {
+    INPUT_SWEEPS = {
         name: np.linspace(
             u_nom_dict[name] * (1.0 - SWEEP_FRACTION),
             u_nom_dict[name] * (1.0 + SWEEP_FRACTION),
             N_SWEEP,
         )
-        for name in MV_NAMES
+        for name in INPUT_NAMES
     }
 
-    output_idx = {name: i for i, name in enumerate(CV_NAMES)}
+    output_idx = {name: i for i, name in enumerate(OUTPUT_NAMES)}
 
     # ── Compute steady-state sweeps ───────────────────────────────────────
     results, boundaries = compute_ss_sweeps(
         ss_solver,
         x_ss_nom,
         u_nom,
-        MV_NAMES,
-        CV_NAMES,
+        INPUT_NAMES,
+        OUTPUT_NAMES,
         output_idx,
-        MV_SWEEPS,
-        input_names=MV_NAMES,
+        INPUT_SWEEPS,
+        all_input_names=INPUT_NAMES,
         param_vals=param_vals,
         find_boundary=True,
     )
 
     print("\nStability boundaries:")
-    for mv_name, bounds in boundaries.items():
+    for input_name, bounds in boundaries.items():
         lo, hi = bounds["lower"], bounds["upper"]
         parts = []
         if lo is not None:
             parts.append(f"lower={lo:.4g}")
         if hi is not None:
             parts.append(f"upper={hi:.4g}")
-        print(f"  {mv_name:<25} {', '.join(parts) if parts else 'none found'}")
+        print(f"  {input_name:<25} {', '.join(parts) if parts else 'none found'}")
 
     # ── Plots ─────────────────────────────────────────────────────────────
     PLOT_TITLE = "Grinding circuit – Steady-state I/O characteristics"
 
     plot_main(
         results,
-        MV_NAMES,
-        CV_NAMES,
-        MV_SWEEPS,
+        INPUT_NAMES,
+        OUTPUT_NAMES,
+        INPUT_SWEEPS,
         u_nom_dict,
         y_nom_dict,
         input_info=INPUT_INFO,
@@ -567,9 +596,9 @@ if __name__ == "__main__":
 
     plot_abstract(
         results,
-        MV_NAMES,
-        CV_NAMES,
-        MV_SWEEPS,
+        INPUT_NAMES,
+        OUTPUT_NAMES,
+        INPUT_SWEEPS,
         u_nom_dict,
         y_nom_dict,
         input_info=INPUT_INFO,
