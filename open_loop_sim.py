@@ -6,6 +6,8 @@ Run:
     python open_loop_sim.py
 """
 
+import os
+
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -20,6 +22,10 @@ from model import (
     STEADY_STATE_STATES,
     build_grinding_circuit_model_with_sump_control,
 )
+
+PLOT_DIR = "plots"
+os.makedirs(PLOT_DIR, exist_ok=True)
+
 
 # Derive charge_porosity from x_mb = 105 m³ (Table 5): x_mb = (1-ε_p)*J_B*v_mill
 _X_MB_SS = 105.0
@@ -87,8 +93,8 @@ fig.suptitle(
     fontsize=11,
 )
 fig.tight_layout()
-plt.savefig("open_loop_states.png", dpi=150)
-print("Saved open_loop_states.png")
+plt.savefig(os.path.join(PLOT_DIR, "open_loop_states.png"), dpi=150)
+print(f"Saved {PLOT_DIR}/open_loop_states.png")
 
 # ── Output plots (incl. controller action) ────────────────────────────────────
 output_units = ["-", "MW", "%", "t/m³", "%", "m³/h"]
@@ -112,8 +118,8 @@ fig2.suptitle(
     fontsize=11,
 )
 fig2.tight_layout()
-plt.savefig("open_loop_outputs.png", dpi=150)
-print("Saved open_loop_outputs.png")
+plt.savefig(os.path.join(PLOT_DIR, "open_loop_outputs.png"), dpi=150)
+print(f"Saved {PLOT_DIR}/open_loop_outputs.png")
 
 plt.show()
 
