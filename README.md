@@ -1,149 +1,281 @@
 # Grinding Circuit Simulation Model
 
-These formulas are entirely based on the following research paper and reflect the model described in Section 2.2: Process Model. The equations and parameter definitions below are sourced directly from the paper text and notation.
+> **Note:** All equations, model structure, and parameter definitions below are sourced
+> directly from Section 2.2 of the following paper. This file is a summary of that work.
 
-Reference:
-- J.D. le Roux and C.W. Steyn, Validation of a dynamic non-linear grinding circuit model for
-process control, *Minerals Engineering* 187 (2022) 107780.
+**Reference:**
+J.D. le Roux and C.W. Steyn, "Validation of a dynamic non-linear grinding circuit model
+for process control," *Minerals Engineering* 187 (2022) 107780.
+https://doi.org/10.1016/j.mineng.2022.107780
+
+---
 
 ## Mill Model
 
-### Mill mass balances
+The mill circuit is modelled with an adapted version of the continuous time
+phenomenological non-linear population balance model of Le Roux et al. (2013).
+Four volume states describe the mill: water ($x_{mw}$), solids ($x_{ms}$),
+rocks ($x_{mr}$), and fines ($x_{mf}$), all in m³.
 
-- $\displaystyle \frac{dx_{ms}}{dt} = \frac{1 - \alpha_r}{\rho_o} u_{MFO} - Q_{mso} + Q_{csu} + Q_{RC}$
-- $\displaystyle \frac{dx_{mr}}{dt} = \frac{\alpha_r}{\rho_o} u_{MFO} - Q_{RC}$
-- $\displaystyle \frac{dx_{mf}}{dt} = \frac{\alpha_f}{\rho_o} u_{MFO} - Q_{mfo} + Q_{cfu} + Q_{FP}$
+### Mill Mass Balances (Equations 1a–1d)
 
-### Mill discharge flow-rates
+$$\frac{d}{dt}x_{mw} = \frac{u_{rMIW}\,u_{MFO}}{\rho_w} - Q_{mwo} + Q_{cwu} \tag{1a}$$
 
-- $\displaystyle Q_{mwo} = \phi \, d_q \, \frac{x_{mw}}{x_{ms} + x_{mw}}$
-- $\displaystyle Q_{mso} = \phi \, d_q \, \frac{x_{mw} \, x_{ms}}{x_{ms} + x_{mw}}$
-- $\displaystyle Q_{mfo} = \phi \, d_q \, \frac{x_{mw} \, x_{mf}}{x_{ms} + x_{mw}}$
+$$\frac{d}{dt}x_{ms} = \frac{(1-\alpha_r)\,u_{MFO}}{\rho_o} - Q_{mso} + Q_{csu} + Q_{RC} \tag{1b}$$
 
-### Rheology factor
+$$\frac{d}{dt}x_{mr} = \frac{\alpha_r\,u_{MFO}}{\rho_o} - Q_{RC} \tag{1c}$$
 
-- $\displaystyle \phi = \begin{cases}
-1 - \left(\varepsilon_0 - 1 - \frac{x_{ms}}{x_{mw}}\right)^{-1}, & \frac{x_{mw}}{x_{ms}} \le \varepsilon_0 - 1 \\
-0, & \frac{x_{mw}}{x_{ms}} > \varepsilon_0 - 1
-\end{cases}$
+$$\frac{d}{dt}x_{mf} = \frac{\alpha_f\,u_{MFO}}{\rho_o} - Q_{mfo} + Q_{cfu} + Q_{FP} \tag{1d}$$
 
-### Rock consumption and fines production
+where $\alpha_f$ and $\alpha_r$ are the fines and rocks mass fractions in the feed ore
+$u_{MFO}$; $\rho_o$ and $\rho_w$ are the ore and water density; $Q_{mwo}$, $Q_{mso}$,
+$Q_{mfo}$ are the mill discharge flow-rates of water, solids and fines; $Q_{cwu}$,
+$Q_{csu}$, $Q_{cfu}$ are the cyclone underflow rates of water, solids and fines;
+$Q_{RC}$ is the rock consumption rate; and $Q_{FP}$ is the fines production rate.
 
-- $\displaystyle Q_{RC} = \frac{x_{mr} \, y_{Pmill}}{\rho_o \, K_{RC} \left(x_{mr} + x_{ms}\right)}$
-- $\displaystyle Q_{FP} = \frac{y_{Pmill}}{\rho_o \, K_{FP} \left(1 + K_{FPJT} y_{JT} - J_{TPmax}\right)}$
+### Mill Discharge Flow-Rates (Equations 2a–2c)
 
-### Mill charge fraction
+$$Q_{mwo} = \varphi\,d_q\,x_{mw}\!\left(\frac{x_{mw}}{x_{ms}+x_{mw}}\right) \tag{2a}$$
 
-- $\displaystyle y_{JT} = \frac{x_{mw} + x_{ms} + x_{mr} + x_{mb}}{v_{mill}}$
+$$Q_{mso} = \varphi\,d_q\,x_{mw}\!\left(\frac{x_{ms}}{x_{ms}+x_{mw}}\right) \tag{2b}$$
 
-### Mill power draw
+$$Q_{mfo} = \varphi\,d_q\,x_{mw}\!\left(\frac{x_{mf}}{x_{ms}+x_{mw}}\right) \tag{2c}$$
 
-- $\displaystyle y_{Pmill} = P_{max} \, u_{\phi c} \, \left[ \frac{1 - \delta_v}{y_{JT}^{-1} - 1} - \delta_s \frac{\phi}{J_{TPmax}} \phi_N \right]^2$
+where $d_q$ (h⁻¹) is the discharge rate, a fitting parameter for the discharge
+mechanism.
 
-### Mill charge density
+### Rheology Factor (Equation 3)
 
-- $\displaystyle \rho_{mc} = \frac{\rho_o (1 - \varepsilon_p + \varepsilon_p U S) + JB (\rho_b - \rho_o)(1 - \varepsilon_p) + \varepsilon_p U (1 - S)}{y_{JT}}$
+The rheology factor $\varphi$ is an empirically defined function that incorporates the
+effect of the fluidity and density of the slurry on mill performance:
+
+$$\varphi = \begin{cases}
+\sqrt{1 - \left(\varepsilon_0^{-1}-1\right)\dfrac{x_{ms}}{x_{mw}}}, &
+\dfrac{x_{ms}}{x_{mw}} \le \left(\varepsilon_0^{-1}-1\right)^{-1} \\[8pt]
+0, & \dfrac{x_{ms}}{x_{mw}} > \left(\varepsilon_0^{-1}-1\right)^{-1}
+\end{cases} \tag{3}$$
+
+where $\varepsilon_0 = 0.60$ is the approximate maximum fraction of solids by volume in
+the slurry at zero slurry flow. The slurry is pure water ($\varphi = 1$) when
+$x_{ms}/x_{mw} = 0$ and becomes a non-flowing mud ($\varphi = 0$) when
+$x_{ms}/x_{mw} = 1.5$.
+
+### Rock Consumption and Fines Production (Equations 4a–4b)
+
+$$Q_{RC} = \frac{x_{mr}\,y_{Pmill}}{\rho_o\,K_{RC}\,(x_{mr}+x_{ms})} \tag{4a}$$
+
+$$Q_{FP} = \frac{y_{Pmill}}{\rho_o\,K_{FP}\!\left(1 + K_{FP_{JT}}\!\left(y_{JT}-J_{TP_{max}}\right)\right)} \tag{4b}$$
+
+where $K_{RC}$ (MWh/t) is the rock consumption factor, $K_{FP}$ (MWh/t) is the fines
+production factor, and $K_{FP_{JT}}$ is the fractional change in fines production per
+unit change in fractional mill filling.
+
+### Mill Charge Fraction (Equation 5)
+
+$$y_{JT} = \frac{x_{mw} + x_{ms} + x_{mr} + x_{mb}}{v_{mill}} \tag{5}$$
+
+where $v_{mill}$ (m³) is the total internal volume of the mill and $x_{mb}$ is the
+(constant) volume of steel balls in the mill.
+
+### Mill Power Draw (Equation 6)
+
+$$y_{Pmill} = P_{max}\,u_{\varphi_c}\!\left[
+  1 - \delta_v\!\left(\frac{y_{JT}}{J_{TP_{max}}}-1\right)^{\!2}
+    - \delta_s\!\left(\frac{\varphi}{\varphi_N}-1\right)^{\!2}
+\right] \tag{6}$$
+
+where $\delta_v$ is the power parameter for mill fill volume, $\delta_s$ is the power
+parameter for fraction solids in the slurry, $\varphi_N$ is the rheology
+normalisation factor, $J_{TP_{max}}$ is the fractional fill at maximum power draw,
+and $P_{max}$ (MW) is the maximum mill power draw.
+
+### Mill Charge Density (Equation 7)
+
+$$\rho_{mc} = \rho_o(1-\varepsilon_p+\varepsilon_p US)
+  + \frac{J_B}{y_{JT}}(\rho_b-\rho_o)(1-\varepsilon_p)
+  + \varepsilon_p U(1-S) \tag{7}$$
+
+where $\varepsilon_p$ is the porosity of the mill charge, $J_B$ is the fraction of the
+mill filled with steel balls, $U$ is the voidage in the mill charge, and $S$ is the
+mill discharge volumetric solids content.
+
+---
 
 ## Sump Model
 
-### Sump mass balances
+Three volume states describe the sump: water ($x_{sw}$), solids ($x_{ss}$), and fines
+($x_{sf}$), all in m³. Rocks and balls do not exit through the mill discharge mechanism
+and so do not form part of the sump balance.
 
-- $\displaystyle \frac{dx_{sw}}{dt} = Q_{mwo} - Q_{swo} + u_{SFW}$
-- $\displaystyle \frac{dx_{ss}}{dt} = Q_{mso} - Q_{sso}$
-- $\displaystyle \frac{dx_{sf}}{dt} = Q_{mfo} - Q_{sfo}$
+### Sump Mass Balances (Equations 8a–8c)
 
-### Sump discharge flow-rates
+$$\frac{d}{dt}x_{sw} = Q_{mwo} - Q_{swo} + u_{SFW} \tag{8a}$$
 
-- $\displaystyle Q_{swo} = u_{CFF} \, \frac{x_{sw}}{x_{sw} + x_{ss}}$
-- $\displaystyle Q_{sso} = u_{CFF} \, \frac{x_{ss}}{x_{sw} + x_{ss}}$
-- $\displaystyle Q_{sfo} = u_{CFF} \, \frac{x_{sf}}{x_{sw} + x_{ss}}$
+$$\frac{d}{dt}x_{ss} = Q_{mso} - Q_{sso} \tag{8b}$$
 
-### Sump metrics
+$$\frac{d}{dt}x_{sf} = Q_{mfo} - Q_{sfo} \tag{8c}$$
 
-- $\displaystyle y_{SLEV} = 100 \, \frac{x_{ss} + x_{sw}}{v_{sump}}$
-- $\displaystyle y_{\rho} = \frac{\rho_w Q_{swo} + \rho_o Q_{sso}}{Q_{swo} + Q_{sso}}$
+where $u_{SFW}$ (m³/h) is the sump feed water and the sump is assumed to be
+fully mixed.
+
+### Sump Discharge Flow-Rates (Equations 9a–9c)
+
+The sump discharges to the cyclone cluster via a variable speed pump at total flow
+rate $u_{CFF}$:
+
+$$Q_{swo} = u_{CFF}\!\left(\frac{x_{sw}}{x_{sw}+x_{ss}}\right) \tag{9a}$$
+
+$$Q_{sso} = u_{CFF}\!\left(\frac{x_{ss}}{x_{sw}+x_{ss}}\right) \tag{9b}$$
+
+$$Q_{sfo} = u_{CFF}\!\left(\frac{x_{sf}}{x_{sw}+x_{ss}}\right) \tag{9c}$$
+
+### Sump Metrics (Equations 10–11)
+
+$$y_{SLEV} = 100\,\frac{x_{ss}+x_{sw}}{v_{sump}} \tag{10}$$
+
+$$y_\rho = \frac{\rho_w Q_{swo} + \rho_o Q_{sso}}{Q_{swo}+Q_{sso}} \tag{11}$$
+
+where $v_{sump}$ (m³) is the physical volume of the sump, $y_{SLEV}$ (%) is the sump
+slurry fill level, and $y_\rho$ (t/m³) is the sump discharge density.
+
+---
 
 ## Cyclone Cluster Model
 
-### Underflow and split equations
+The cyclone cluster is modelled as a single classifier. The aim is to calculate the
+total water, solids and fines split at the cluster. Define the feed fractions:
 
-- $\displaystyle Q_{ccu} = Q_{sso} - Q_{sfo} \left[ 1 - C_1 \exp\left(-\frac{u_{CFF}}{\varepsilon_c} \times \left(\frac{F_i^3}{1 - (1 - P_i^{C_3})^{-1}}\right)\right) \right]$
+$$F_i = \frac{Q_{sso}}{u_{CFF}}, \qquad P_i = \frac{Q_{sfo}}{Q_{sso}}$$
 
-- $\displaystyle F_u = \frac{Q_{csu}}{Q_{csu} + Q_{cwu}}$
+### Coarse Underflow (Equation 12)
 
-- $\displaystyle F_u = C_2 - (C_2 - F_i) \exp\left(-\frac{Q_{ccu}}{\alpha_{su} \varepsilon_c}\right)$
+$$Q_{ccu} = (Q_{sso}-Q_{sfo})\!\left(1-C_1\exp\!\left(-\frac{u_{CFF}}{\varepsilon_c}\right)\right)
+  \left(1-\left(\frac{F_i}{C_2}\right)^{\!C_3}\right)\!(1-P_i^{C_3}) \tag{12}$$
 
-- $\displaystyle Q_{cwu} = \frac{Q_{swo} \left(Q_{ccu} - F_u Q_{ccu}\right)}{F_u Q_{swo} + F_u Q_{sfo} - Q_{sfo}}$
-- $\displaystyle Q_{cfu} = \frac{Q_{sfo} \left(Q_{ccu} - F_u Q_{ccu}\right)}{F_u Q_{swo} + F_u Q_{sfo} - Q_{sfo}}$
-- $\displaystyle Q_{csu} = Q_{ccu} + Q_{cfu}$
+where $C_1 = 0.70$ relates to the split at low flows, $C_2 = 0.70$ normalises the
+fraction solids in the feed, $C_3$ is an integer adjusting the sharpness of the
+dependency on $F_i$ and $P_i$, and $\varepsilon_c$ (m³/h) relates to the coarse split
+at the cyclone.
 
-### Product specification
+### Fraction of Solids in the Underflow (Equations 13–14)
 
-- $\displaystyle y_{PSE} = 100 \, \frac{Q_{cfo}}{Q_{cso}}$
+$$F_u = \frac{Q_{csu}}{Q_{csu}+Q_{cwu}} \tag{13}$$
 
-## State-space Representation
+$$F_u = C_2 - (C_2-F_i)\exp\!\left(-\frac{Q_{ccu}}{\alpha_{su}\,\varepsilon_c}\right) \tag{14}$$
 
-The state-space model is defined in Section 2.3 using the mill and sump balance equations from (1) and (8), with outputs given by (5), (6), (10), (11), and (16).
+where $\alpha_{su}$ is a parameter related to the fraction of solids in the cyclone
+underflow.
 
-### State vector
+### Cyclone Underflow Flow-Rates (Equations 15a–15c)
 
-- $\displaystyle x = \begin{bmatrix} x_{mw} & x_{ms} & x_{mr} & x_{mf} & x_{sw} & x_{ss} & x_{sf} \end{bmatrix}^T$
+$$Q_{cwu} = \frac{Q_{swo}\,(Q_{ccu}-F_u Q_{ccu})}{F_u Q_{swo}+F_u Q_{sfo}-Q_{sfo}} \tag{15a}$$
 
-### Input vector
+$$Q_{cfu} = \frac{Q_{sfo}\,(Q_{ccu}-F_u Q_{ccu})}{F_u Q_{swo}+F_u Q_{sfo}-Q_{sfo}} \tag{15b}$$
 
-- $\displaystyle u = \begin{bmatrix} u_{MFO} & u_{rMIW} & u_{\phi c} & u_{SFW} & u_{CFF} \end{bmatrix}^T$
+$$Q_{csu} = Q_{ccu}+Q_{cfu} \tag{15c}$$
 
-### Output vector
+### Product Particle Size (Equation 16)
 
-- $\displaystyle y = \begin{bmatrix} y_{JT} & y_{Pmill} & y_{SLEV} & y_{\rho} & y_{PSE} \end{bmatrix}^T$
+$$y_{PSE} = 100\!\left(\frac{Q_{cfo}}{Q_{cso}}\right) \tag{16}$$
 
-### State-space equations
+where $Q_{cfo}$ and $Q_{cso}$ are the cyclone overflow fines and solids flow-rates,
+respectively, and $y_{PSE}$ (%) is the product particle size estimate passing 75 µm.
 
-- $\displaystyle \frac{dx}{dt} = f(t, x, u, p)$
-- $\displaystyle y = h(t, x, u, p)$
+---
 
-Here, $p$ contains the model parameters listed in Table 2. The function $f(\cdot)$ collects the dynamic mill and sump mass-balance equations, and $h(\cdot)$ collects the algebraic output relationships.
+## State-Space Representation (Section 2.3)
+
+The grinding mill circuit is formulated as:
+
+$$\frac{d}{dt}\mathbf{x} = \mathbf{f}(t,\mathbf{x},\mathbf{u},\mathbf{p}) \tag{17a}$$
+
+$$\mathbf{y} = \mathbf{h}(t,\mathbf{x},\mathbf{u},\mathbf{p}) \tag{17b}$$
+
+where $\mathbf{p}$ is the model parameter vector (Table 2). The dynamic function
+$\mathbf{f}(\cdot)$ collects equations (1) and (8); the output function $\mathbf{h}(\cdot)$
+collects equations (5), (6), (10), (11), and (16).
+
+### State Vector
+
+Seven volume states — four in the mill and three in the sump:
+
+$$\mathbf{x} = \begin{bmatrix}
+x_{mw} \\ x_{ms} \\ x_{mr} \\ x_{mf} \\ x_{sw} \\ x_{ss} \\ x_{sf}
+\end{bmatrix}$$
+
+| Symbol | Python name | Unit | Description |
+|---|---|---|---|
+| $x_{mw}$ | `water_volume` | m³ | Volume of water in the mill |
+| $x_{ms}$ | `solids_volume` | m³ | Volume of solids in the mill |
+| $x_{mr}$ | `rock_volume` | m³ | Volume of rocks in the mill |
+| $x_{mf}$ | `fines_volume` | m³ | Volume of fines in the mill |
+| $x_{sw}$ | `sump_water_volume` | m³ | Volume of water in the sump |
+| $x_{ss}$ | `sump_solids_volume` | m³ | Volume of solids in the sump |
+| $x_{sf}$ | `sump_fines_volume` | m³ | Volume of fines in the sump |
+
+### Input Vector
+
+Five manipulated variables:
+
+$$\mathbf{u} = \begin{bmatrix}
+u_{MFO} \\ u_{rMIW} \\ u_{\varphi_c} \\ u_{SFW} \\ u_{CFF}
+\end{bmatrix}$$
+
+| Symbol | Python name | Unit | Description |
+|---|---|---|---|
+| $u_{MFO}$ | `feed_ore_rate` | t/h | Mill feed ore |
+| $u_{rMIW}$ | `water_ore_ratio` | — | Ratio of mill inlet water to feed ore |
+| $u_{\varphi_c}$ | `critical_speed_fraction` | — | Fraction of critical mill speed |
+| $u_{SFW}$ | `sump_feed_water` | m³/h | Sump feed water flow rate |
+| $u_{CFF}$ | `cyclone_feed_flow` | m³/h | Cyclone feed flow rate |
+
+### Output Vector
+
+Five measured variables:
+
+$$\mathbf{y} = \begin{bmatrix}
+y_{JT} \\ y_{Pmill} \\ y_{SLEV} \\ y_\rho \\ y_{PSE}
+\end{bmatrix}$$
+
+| Symbol | Python name | Unit | Description |
+|---|---|---|---|
+| $y_{JT}$ | `charge_fill_fraction` | — | Fraction of mill filled with charge |
+| $y_{Pmill}$ | `mill_power` | MW | Power draw of the mill |
+| $y_{SLEV}$ | `sump_level` | % | Sump slurry fill level |
+| $y_\rho$ | `sump_density` | t/m³ | Sump discharge density |
+| $y_{PSE}$ | `product_size` | % | Product particle size estimate ($< 75\,\mu$m) |
+
+---
 
 ## Model Parameters (Table 2)
 
-| Parameter | Python name | Unit | Description |
+| Symbol | Python name | Unit | Description |
 |---|---|---|---|
 | $\rho_b$ | `rho_balls` | t/m³ | Density of balls |
 | $\rho_{mc}$ | `rho_charge` | t/m³ | Density of mill charge |
 | $\rho_o$ | `rho_ore` | t/m³ | Density of ore |
 | $\rho_w$ | `rho_water` | t/m³ | Density of water |
-| $\alpha_f$ | `alpha_fines` | - | Mass fraction of fines in the feed ore |
-| $\alpha_r$ | `alpha_rocks` | - | Mass fraction of rocks in the feed ore |
-| $\delta_s$ | `delta_solid_fraction` | - | Power parameter for fraction solids in the mill |
-| $\delta_v$ | `delta_fill_volume` | - | Power parameter for volume of mill filled |
+| $\alpha_f$ | `alpha_fines` | — | Mass fraction of fines in the feed ore |
+| $\alpha_r$ | `alpha_rocks` | — | Mass fraction of rocks in the feed ore |
+| $\delta_s$ | `delta_solids` | — | Power parameter for fraction solids in the mill |
+| $\delta_v$ | `delta_volume` | — | Power parameter for volume of mill filled |
 | $d_q$ | `discharge_rate` | h⁻¹ | Discharge rate |
-| $\varepsilon_0$ | `epsilon_zero` | - | Maximum fraction of solids by volume slurry at zero slurry flow |
-| $\varepsilon_p$ | `porosity` | - | Porosity of the mill charge |
-| $\phi_N$ | `phi_normalization` | - | Rheology normalisation factor |
-| $J_B$ | `ball_fill_fraction` | - | Fraction of mill filled with steel balls |
-| $J_{TPmax}$ | `fill_fraction_max_power` | - | Fraction of mill filled at maximum power draw |
+| $\varepsilon_0$ | `epsilon_zero` | — | Maximum fraction of solids by volume in slurry at zero slurry flow |
+| $\varepsilon_p$ | `charge_porosity` | — | Porosity of the mill charge |
+| $\varphi_N$ | `phi_norm` | — | Rheology normalisation factor |
+| $J_B$ | `ball_fill_fraction` | — | Fraction of mill filled with steel balls |
+| $J_{TP_{max}}$ | `fill_fraction_max_power` | — | Fraction of mill filled at maximum power draw |
 | $K_{FP}$ | `k_fines_production` | MWh/t | Fines production factor |
-| $K_{FPJT}$ | `k_fpjt` | - | Fractional change in fines production factor per change in fractional mill filling |
+| $K_{FP_{JT}}$ | `k_fines_production_jt` | — | Fractional change in fines production factor per unit change in fractional mill filling |
 | $K_{RC}$ | `k_rock_consumption` | MWh/t | Rock consumption factor |
-| $P_{max}$ | `p_max` | MW | Maximum mill power draw |
-| $S$ | `discharge_solids_content` | - | Mill discharge volumetric solids content |
-| $U$ | `charge_voidage` | - | Voidage in the mill charge |
+| $P_{max}$ | `power_max` | MW | Maximum mill power draw |
+| $S$ | `discharge_solids_fraction` | — | Mill discharge volumetric solids content |
+| $U$ | `charge_voidage` | — | Voidage in the mill charge |
 | $v_{mill}$ | `mill_volume` | m³ | Mill volume |
 | $v_{sump}$ | `sump_volume` | m³ | Sump volume |
-| $\alpha_{su}$ | `cyclone_alpha_underflow` | - | Parameter related to fraction solids in cyclone underflow |
-| $C_1$ | `cyclone_c1` | - | Cyclone model constant |
-| $C_2$ | `cyclone_c2` | - | Cyclone model constant |
-| $C_3$ | `cyclone_c3` | - | Cyclone model constant |
+| $\alpha_{su}$ | `cyclone_alpha_underflow` | — | Parameter related to fraction solids in cyclone underflow |
+| $C_1$ | `cyclone_c1` | — | Cyclone model constant |
+| $C_2$ | `cyclone_c2` | — | Cyclone model constant |
+| $C_3$ | `cyclone_c3` | — | Cyclone model constant (integer) |
 | $\varepsilon_c$ | `cyclone_epsilon_c` | m³/h | Parameter related to coarse split at cyclone |
 
-## State Variables
-
-| Symbol | Python name | Description |
-|---|---|---|
-| $x_{mw}$ | `water_volume` | Volume of water in the mill |
-| $x_{ms}$ | `solids_volume` | Volume of solids in the mill |
-| $x_{mr}$ | `rock_volume` | Volume of rocks in the mill |
-| $x_{mf}$ | `fines_volume` | Volume of fines in the mill |
-| $x_{sw}$ | `sump_water_volume` | Volume of water in the sump |
-| $x_{ss}$ | `sump_solids_volume` | Volume of solids in the sump |
-| $x_{sf}$ | `sump_fines_volume` | Volume of fines in the sump |
