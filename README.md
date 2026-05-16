@@ -42,10 +42,7 @@ the test suite.
 import numpy as np
 from model import build_grinding_circuit_model, STEADY_STATE_STATES, STEADY_STATE_INPUTS
 
-# charge_porosity is calibrated from Table 5: x_mb = (1 - ε_p) * J_B * v_mill = 105 m³
-charge_porosity = 1.0 - 105.0 / (0.30 * 540.9)
-
-model = build_grinding_circuit_model(charge_porosity=charge_porosity)
+model = build_grinding_circuit_model()
 # model.n=7 states, model.nu=5 inputs, model.ny=5 outputs
 
 x0 = np.array([STEADY_STATE_STATES[n] for n in model.state_names])
@@ -60,7 +57,7 @@ y0   = np.array(model.h(0.0, x0, u0)).flatten()   # outputs at this operating po
 The open-loop model (constant `u_CFF`) is unstable — the sump drains or
 overflows without level control.  `build_grinding_circuit_model_with_sump_control`
 embeds a proportional controller that manipulates the cyclone feed pump (`u_CFF`)
-to maintain the sump level between configurable limits (default 5 %–80 %).
+to maintain the sump level between configurable limits (default 10 %–80 %).
 
 ```python
 import numpy as np
@@ -70,8 +67,7 @@ from model import (
     STEADY_STATE_STATES, STEADY_STATE_INPUTS,
 )
 
-charge_porosity = 1.0 - 105.0 / (0.30 * 540.9)
-model = build_grinding_circuit_model_with_sump_control(charge_porosity=charge_porosity)
+model = build_grinding_circuit_model_with_sump_control()
 # model.nu=4 inputs (u_CFF is now internal), model.ny=6 outputs (adds u_CFF as monitor)
 
 dt      = 60 / 3600        # 1-minute sample time in hours
@@ -347,9 +343,8 @@ y_{JT} \\ y_{Pmill} \\ y_{SLEV} \\ y_\rho \\ y_{PSE}
 | $\delta_v$ | `delta_volume` | — | Power parameter for volume of mill filled |
 | $d_q$ | `discharge_rate` | h⁻¹ | Discharge rate |
 | $\varepsilon_0$ | `epsilon_zero` | — | Maximum fraction of solids by volume in slurry at zero slurry flow |
-| $\varepsilon_p$ | `charge_porosity` | — | Porosity of the mill charge |
+| $x_{mb}$ | `ball_volume` | m³ | Volume of steel balls in the mill |
 | $\varphi_N$ | `phi_norm` | — | Rheology normalisation factor |
-| $J_B$ | `ball_fill_fraction` | — | Fraction of mill filled with steel balls |
 | $J_{TP_{max}}$ | `fill_fraction_max_power` | — | Fraction of mill filled at maximum power draw |
 | $K_{FP}$ | `k_fines_production` | MWh/t | Fines production factor |
 | $K_{FP_{JT}}$ | `k_fines_production_jt` | — | Fractional change in fines production factor per unit change in fractional mill filling |

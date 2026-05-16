@@ -28,17 +28,10 @@ from model import (
     build_grinding_circuit_model_with_sump_control,
 )
 
-# Derive charge_porosity from x_mb = 105 m³ (Table 5) using eq. (32a):
-#   x_mb = (1 - ε_p) * J_B * v_mill
-_J_B = 0.30  # ball_fill_fraction default
-_V_MILL = 540.9  # mill_volume default
-_X_MB_SS = 105.0
-CHARGE_POROSITY_SS = 1.0 - _X_MB_SS / (_J_B * _V_MILL)
-
 
 @pytest.fixture(scope="module")
 def model():
-    return build_grinding_circuit_model(charge_porosity=CHARGE_POROSITY_SS)
+    return build_grinding_circuit_model()
 
 
 @pytest.fixture(scope="module")
@@ -119,9 +112,7 @@ class TestSteadyState:
 
 @pytest.fixture(scope="module")
 def model_cl():
-    return build_grinding_circuit_model_with_sump_control(
-        charge_porosity=CHARGE_POROSITY_SS
-    )
+    return build_grinding_circuit_model_with_sump_control()
 
 
 @pytest.fixture(scope="module")

@@ -101,8 +101,7 @@ def build_grinding_circuit_model(
     alpha_fines=0.10,  # α_f: fines mass fraction in feed
     alpha_rocks=0.50,  # α_r: rocks mass fraction in feed
     # Mill parameters — Table 4 where available, Table 5 for calibrated
-    ball_fill_fraction=0.30,  # J_B: fraction of mill filled with balls (Table 4)
-    charge_porosity=None,  # ε_p: mill charge porosity (calibrated, no default)
+    ball_volume=105.0,  # x_mb: volume of steel balls in mill (m³) (Table 5)
     delta_solids=0.0911,  # δ_s: power parameter, solids fraction (Table 5)
     delta_volume=0.0911,  # δ_v: power parameter, mill fill volume (Table 5)
     discharge_rate=114.7,  # d_q (h⁻¹): mill discharge rate (Table 5)
@@ -138,8 +137,7 @@ def build_grinding_circuit_model(
         rho_water=rho_water,
         alpha_fines=alpha_fines,
         alpha_rocks=alpha_rocks,
-        ball_fill_fraction=ball_fill_fraction,
-        charge_porosity=charge_porosity,
+        ball_volume=ball_volume,
         delta_solids=delta_solids,
         delta_volume=delta_volume,
         discharge_rate=discharge_rate,
@@ -163,8 +161,7 @@ def build_grinding_circuit_model(
     rho_water = params["rho_water"]
     alpha_fines = params["alpha_fines"]
     alpha_rocks = params["alpha_rocks"]
-    ball_fill_fraction = params["ball_fill_fraction"]
-    charge_porosity = params["charge_porosity"]
+    ball_volume = params["ball_volume"]
     delta_solids = params["delta_solids"]
     delta_volume = params["delta_volume"]
     discharge_rate = params["discharge_rate"]
@@ -208,8 +205,7 @@ def build_grinding_circuit_model(
     # Mill intermediate variables
     # ------------------------------------------------------------------
 
-    # Constant ball volume from eq. (32a): x_mb = (1 - ε_p) J_B v_mill
-    x_mb = (1.0 - charge_porosity) * ball_fill_fraction * mill_volume
+    x_mb = ball_volume
 
     # Mill charge fraction, eq. (5)
     y_JT = (x_mw + x_ms + x_mr + x_mb) / mill_volume
@@ -382,7 +378,7 @@ def build_grinding_circuit_model_with_sump_control(
     Parameters
     ----------
     level_min : float
-        Sump level (%) at which u_CFF = 0.  Default 5.0.
+        Sump level (%) at which u_CFF = 0.  Default 10.0.
     level_max : float
         Sump level (%) at which u_CFF = cff_max.  Default 80.0.
     cff_max : float or None
@@ -391,8 +387,7 @@ def build_grinding_circuit_model_with_sump_control(
     sump_volume : float
         Sump volume (m³); must match the value used in the base model.
     **model_kwargs
-        Forwarded verbatim to ``build_grinding_circuit_model`` (e.g.
-        ``charge_porosity``).
+        Forwarded verbatim to ``build_grinding_circuit_model``.
 
     Returns
     -------

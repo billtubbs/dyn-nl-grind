@@ -27,10 +27,6 @@ PLOT_DIR = "plots"
 os.makedirs(PLOT_DIR, exist_ok=True)
 
 
-# Derive charge_porosity from x_mb = 105 m³ (Table 5): x_mb = (1-ε_p)*J_B*v_mill
-_X_MB_SS = 105.0
-CHARGE_POROSITY_SS = 1.0 - _X_MB_SS / (0.30 * 540.9)
-
 # Simulation parameters
 DT_SEC = 60.0  # sample time (seconds)
 DT_H = DT_SEC / 3600.0  # sample time (hours)
@@ -42,9 +38,7 @@ x0 = np.array([STEADY_STATE_STATES[n] for n in STATE_NAMES])
 u0 = np.array([STEADY_STATE_INPUTS[n] for n in CL_INPUT_NAMES])
 
 print("Building model with sump level control...")
-model = build_grinding_circuit_model_with_sump_control(
-    charge_porosity=CHARGE_POROSITY_SS
-)
+model = build_grinding_circuit_model_with_sump_control()
 
 print(
     f"Building {N_STEPS}-step simulation (dt={DT_H:.5f} h = {DT_SEC:.0f} s)..."
