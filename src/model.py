@@ -27,10 +27,6 @@ from cas_models.param_utils import make_symbolic_vars_from_kwargs
 N_STATES = 7
 N_INPUTS = 5
 N_OUTPUTS = 5
-N_CL_INPUTS = (
-    N_INPUTS - 1
-)  # 4 (cyclone_feed_flow is controlled, not a free input)
-N_CL_OUTPUTS = N_OUTPUTS + 1  # 6 (adds cyclone_feed_flow as a monitor output)
 
 STATE_NAMES = [
     "water_volume",  # x_mw: mill water (m³)
@@ -57,12 +53,6 @@ OUTPUT_NAMES = [
     "sump_density",  # y_rho (t/m³)
     "product_size",  # y_PSE (%)
 ]
-
-# Closed-loop model (sump level controller): u_CFF is internal, shown as output
-CL_INPUT_NAMES = INPUT_NAMES[
-    :4
-]  # feed_ore_rate, water_ore_ratio, critical_speed_fraction, sump_feed_water
-CL_OUTPUT_NAMES = OUTPUT_NAMES + ["cyclone_feed_flow"]
 
 # Normal operating point (NOP) — inputs from Table 4 (Le Roux & Steyn, 2022).
 # States and outputs are solver-computed from these inputs; the paper's rounded
@@ -93,36 +83,73 @@ OUTPUTS_NOP = {
     "product_size": 35.51,  # y_PSE   (%)
 }
 
+# ── Default model parameters (Tables 4 & 5, Le Roux & Steyn 2022) ────────────
+# Densities
+RHO_ORE = 3.2  # ρ_o (t/m³)
+RHO_WATER = 1.0  # ρ_w (t/m³)
+# Feed ore composition
+ALPHA_FINES = 0.10  # α_f: fines mass fraction in feed
+ALPHA_ROCKS = 0.50  # α_r: rocks mass fraction in feed
+# Mill
+BALL_VOLUME = 105.0  # x_mb: steel ball volume (m³)        — Table 5
+DELTA_SOLIDS = 0.0911  # δ_s: power param, solids fraction    — Table 5
+DELTA_VOLUME = 0.0911  # δ_v: power param, mill fill volume   — Table 5
+DISCHARGE_RATE = 114.7  # d_q (h⁻¹): mill discharge rate       — Table 5
+EPSILON_ZERO = 0.60  # ε₀: max solids fraction at zero flow  — paper text
+FILL_FRACTION_MAX_POWER = (
+    0.23  # J_TPmax: fill fraction at max power  — Table 4
+)
+K_FINES_PRODUCTION = 15.0e-3  # K_FP (MWh/t): fines production        — Table 5
+K_FINES_PRODUCTION_JT = 20.0  # K_FPjt: fines-production fill sens.   — Table 5
+K_ROCK_CONSUMPTION = 5.97e-3  # K_RC (MWh/t): rock consumption        — Table 5
+MILL_VOLUME = 540.9  # v_mill (m³)                           — Table 4
+PHI_NORM = 0.70  # φ_N: rheology normalisation factor    — Table 5
+POWER_MAX = 19.7  # P_max (MW): maximum mill power draw   — Table 4
+# Sump
+SUMP_VOLUME = 345.8  # v_sump (m³)                           — Table 4
+# Cyclone
+CYCLONE_ALPHA_UNDERFLOW = (
+    0.119  # α_su                                  — Table 5
+)
+CYCLONE_C1 = 0.70  # C₁                                    — paper text
+CYCLONE_C2 = 0.70  # C₂                                    — paper text
+CYCLONE_C3 = 4  # C₃ (integer)                          — Table 5
+CYCLONE_EPSILON_C = 2528.0  # ε_c (m³/h)                            — Table 5
+
+# ── Controller defaults ───────────────────────────────────────────────────────
+SUMP_LEVEL_MIN = 10.0  # % — sump level at which CFF pump is off
+SUMP_LEVEL_MAX = 80.0  # % — sump level at which CFF pump is at maximum
+MFO_MIN = 0.0  # t/h — minimum ore feed rate
+MFO_MAX = 1500.0  # t/h — maximum ore feed rate
+
+# Charge-level P-controller plant gain — average of ±50 t/h step tests
+CHARGE_LEVEL_PLANT_GAIN = sum([-0.02576 / -50, 0.02300 / 50]) / 2
+
 
 def build_grinding_circuit_model(
-    # Densities — defaults from Table 4
-    rho_ore=3.2,  # ρ_o (t/m³)
-    rho_water=1.0,  # ρ_w (t/m³)
-    # Feed ore composition — Table 4
-    alpha_fines=0.10,  # α_f: fines mass fraction in feed
-    alpha_rocks=0.50,  # α_r: rocks mass fraction in feed
-    # Mill parameters — Table 4 where available, Table 5 for calibrated
-    ball_volume=105.0,  # x_mb: volume of steel balls in mill (m³) (Table 5)
-    delta_solids=0.0911,  # δ_s: power parameter, solids fraction (Table 5)
-    delta_volume=0.0911,  # δ_v: power parameter, mill fill volume (Table 5)
-    discharge_rate=114.7,  # d_q (h⁻¹): mill discharge rate (Table 5)
-    epsilon_zero=0.60,  # ε₀: max solids fraction at zero flow (paper text)
-    fill_fraction_max_power=0.23,  # J_TPmax: fill fraction at max power (Table 4)
-    k_fines_production=15.0e-3,  # K_FP (MWh/t): fines production factor (Table 5)
-    k_fines_production_jt=20.0,  # K_FPjt: fines production fill sensitivity (Table 5)
-    k_rock_consumption=5.97e-3,  # K_RC (MWh/t): rock consumption factor (Table 5)
-    mill_volume=540.9,  # v_mill (m³) (Table 4)
-    phi_norm=0.70,  # φ_N: rheology normalisation factor (Table 5)
-    power_max=19.7,  # P_max (MW): maximum mill power draw (Table 4)
-    # Sump parameters — Table 4
-    sump_volume=345.8,  # v_sump (m³)
-    # Cyclone parameters — text (C1, C2) and Table 5 (rest)
-    cyclone_alpha_underflow=0.119,  # α_su
-    cyclone_c1=0.70,  # C₁
-    cyclone_c2=0.70,  # C₂
-    cyclone_c3=4,  # C₃ (integer)
-    cyclone_epsilon_c=2528.0,  # ε_c (m³/h)
-    name="grinding_circuit",
+    rho_ore=RHO_ORE,
+    rho_water=RHO_WATER,
+    alpha_fines=ALPHA_FINES,
+    alpha_rocks=ALPHA_ROCKS,
+    ball_volume=BALL_VOLUME,
+    delta_solids=DELTA_SOLIDS,
+    delta_volume=DELTA_VOLUME,
+    discharge_rate=DISCHARGE_RATE,
+    epsilon_zero=EPSILON_ZERO,
+    fill_fraction_max_power=FILL_FRACTION_MAX_POWER,
+    k_fines_production=K_FINES_PRODUCTION,
+    k_fines_production_jt=K_FINES_PRODUCTION_JT,
+    k_rock_consumption=K_ROCK_CONSUMPTION,
+    mill_volume=MILL_VOLUME,
+    phi_norm=PHI_NORM,
+    power_max=POWER_MAX,
+    sump_volume=SUMP_VOLUME,
+    cyclone_alpha_underflow=CYCLONE_ALPHA_UNDERFLOW,
+    cyclone_c1=CYCLONE_C1,
+    cyclone_c2=CYCLONE_C2,
+    cyclone_c3=CYCLONE_C3,
+    cyclone_epsilon_c=CYCLONE_EPSILON_C,
+    name="c1_grind",
 ):
     """Build a continuous-time state-space model of a grinding mill circuit.
 
@@ -300,6 +327,7 @@ def build_grinding_circuit_model(
     dx_sf = Q_mfo - Q_sfo  # eq. (8c)
 
     rhs = cas.vertcat(dx_mw, dx_ms, dx_mr, dx_mf, dx_sw, dx_ss, dx_sf)
+    assert rhs.shape == (N_STATES, 1)
 
     # ------------------------------------------------------------------
     # Output equations h(t, x, u, p) — equations (5), (6), (10), (11), (16)
@@ -317,6 +345,7 @@ def build_grinding_circuit_model(
     y_PSE = 100.0 * (Q_cfo / Q_cso)
 
     y = cas.vertcat(y_JT, y_Pmill, y_SLEV, y_rho, y_PSE)
+    assert y.shape == (N_OUTPUTS, 1)
 
     # ------------------------------------------------------------------
     # Build CasADi Function objects
@@ -356,11 +385,11 @@ def build_grinding_circuit_model(
 
 
 def build_grinding_circuit_model_with_sump_control(
-    level_min=10.0,
-    level_max=80.0,
+    level_min=SUMP_LEVEL_MIN,
+    level_max=SUMP_LEVEL_MAX,
     cff_max=None,
-    sump_volume=345.8,
-    name="grinding_circuit_level_control",
+    sump_volume=SUMP_VOLUME,
+    name="c1_grind_sc",
     **model_kwargs,
 ):
     """Build a grinding circuit model with proportional sump level control.
@@ -379,9 +408,9 @@ def build_grinding_circuit_model_with_sump_control(
     Parameters
     ----------
     level_min : float
-        Sump level (%) at which u_CFF = 0.  Default 10.0.
+        Sump level (%) at which u_CFF = 0.  Default SUMP_LEVEL_MIN.
     level_max : float
-        Sump level (%) at which u_CFF = cff_max.  Default 80.0.
+        Sump level (%) at which u_CFF = cff_max.  Default SUMP_LEVEL_MAX.
     cff_max : float or None
         Maximum cyclone feed flow (m³/h).  If None, derived from the paper's
         steady-state inputs and outputs.
@@ -406,12 +435,22 @@ def build_grinding_circuit_model_with_sump_control(
         sump_volume=sump_volume, **model_kwargs
     )
 
+    # Closed-loop model (sump level controller): u_CFF is internal, shown as output
+    CL_INPUT_NAMES = INPUT_NAMES.copy()
+    CL_INPUT_NAMES.remove("cyclone_feed_flow")
+    CL_OUTPUT_NAMES = OUTPUT_NAMES + ["cyclone_feed_flow"]
+
+    N_CL_INPUTS = len(CL_INPUT_NAMES)  # 4 cyclone_feed_flow is now controlled
+    N_CL_OUTPUTS = len(CL_OUTPUT_NAMES)  # 6 cyclone_feed_flow added
+
     t = cas.SX.sym("t")
     x = cas.SX.sym("x", N_STATES)
     u = cas.SX.sym("u", N_CL_INPUTS)
 
     # Sump level (%) from state — same formula as base model eq. (10)
-    y_SLEV_ctrl = 100.0 * (x[4] + x[5]) / sump_volume
+    x_sw = x[4]  # sump water volume (m³)
+    x_ss = x[5]  # sump solids volume (m³)
+    y_SLEV_ctrl = 100.0 * (x_sw + x_ss) / sump_volume
 
     # P controller with saturation
     Kp = cff_max / (level_max - level_min)
@@ -421,12 +460,194 @@ def build_grinding_circuit_model_with_sump_control(
 
     # Full 5-element input vector for the base model
     u_full = cas.vertcat(u, u_CFF)
+    assert u_full.shape == (N_INPUTS, 1)
 
     # Compose with base model (calling a CasADi Function with SX args returns SX)
     sym_params = base.params
     rhs = base.f(t, x, u_full, *sym_params.values())
     y_base = base.h(t, x, u_full, *sym_params.values())
     y_cl = cas.vertcat(y_base, u_CFF)
+    assert y_cl.shape == (N_CL_OUTPUTS, 1)
+
+    f_func = cas.Function(
+        "f_cl",
+        [t, x, u, *sym_params.values()],
+        [rhs],
+        ["t", "x", "u", *sym_params.keys()],
+        ["rhs"],
+    )
+    h_func = cas.Function(
+        "h_cl",
+        [t, x, u, *sym_params.values()],
+        [y_cl],
+        ["t", "x", "u", *sym_params.keys()],
+        ["y"],
+    )
+
+    return StateSpaceModelCT(
+        f_func,
+        h_func,
+        n=N_STATES,
+        nu=N_CL_INPUTS,
+        ny=N_CL_OUTPUTS,
+        params=sym_params,
+        name=name,
+        state_names=STATE_NAMES,
+        input_names=CL_INPUT_NAMES,
+        output_names=CL_OUTPUT_NAMES,
+    )
+
+
+def build_grinding_circuit_model_with_level_control(
+    charge_fill_fraction_sp=OUTPUTS_NOP["charge_fill_fraction"],
+    mfo_nop=INPUTS_NOP["feed_ore_rate"],
+    mfo_min=MFO_MIN,
+    mfo_max=MFO_MAX,
+    sump_level_min=SUMP_LEVEL_MIN,
+    sump_level_max=SUMP_LEVEL_MAX,
+    cff_max=None,
+    sump_volume=SUMP_VOLUME,
+    ball_volume=BALL_VOLUME,
+    mill_volume=MILL_VOLUME,
+    name="c1_grind_sc_lc",
+    **model_kwargs,
+):
+    """Build a grinding circuit model with charge level and sump level control.
+
+    Both the ore feed rate (u_MFO) and the cyclone feed pump (u_CFF) are
+    computed internally from P controllers.
+
+    Charge level controller — u_MFO is driven by the charge fill fraction
+    error, biased at the NOP feed rate:
+
+        u_MFO = clip(mfo_nop + K_c * (charge_fill_fraction_sp - y_JT),
+                     mfo_min, mfo_max)
+
+    where K_c is derived from step-test plant gain data.
+
+    Sump level controller — u_CFF is mapped proportionally from sump level,
+    saturating at both ends:
+
+        u_CFF = clip(cff_max * (y_SLEV - sump_level_min)
+                              / (sump_level_max - sump_level_min),
+                     0, cff_max)
+
+    ``cff_max`` defaults to the value that gives the paper's steady-state
+    pump flow (2921 m³/h) at the paper's steady-state sump level (59.4 %).
+
+    Parameters
+    ----------
+    charge_fill_fraction_sp : float
+        Charge fill fraction setpoint (-).  Default OUTPUTS_NOP["charge_fill_fraction"].
+    mfo_nop : float
+        Feed rate bias at NOP (t/h).  Default INPUTS_NOP["feed_ore_rate"].
+    mfo_min : float
+        Minimum ore feed rate (t/h).  Default MFO_MIN.
+    mfo_max : float
+        Maximum ore feed rate (t/h).  Default MFO_MAX.
+    sump_level_min : float
+        Sump level (%) at which u_CFF = 0.  Default SUMP_LEVEL_MIN.
+    sump_level_max : float
+        Sump level (%) at which u_CFF = cff_max.  Default SUMP_LEVEL_MAX.
+    cff_max : float or None
+        Maximum cyclone feed flow (m³/h).  If None, derived from the paper's
+        steady-state inputs and outputs.
+    sump_volume : float
+        Sump volume (m³); must match the value used in the base model.
+    ball_volume : float
+        Volume of steel balls in mill (m³).  Default BALL_VOLUME.
+    mill_volume : float
+        Mill volume (m³).  Default MILL_VOLUME.
+    **model_kwargs
+        Forwarded verbatim to ``build_grinding_circuit_model``.
+
+    Returns
+    -------
+    StateSpaceModelCT
+        n=7 states, nu=3 inputs (water_ore_ratio, critical_speed_fraction,
+        sump_feed_water), ny=7 outputs (original 5 plus cyclone_feed_flow
+        and feed_ore_rate so both controller actions can be monitored).
+    """
+
+    K_c_mfo = 1 / CHARGE_LEVEL_PLANT_GAIN
+
+    # Plant time constant
+    # T1 = 64  # mins approx. from step tests
+    # TODO: do we need a PI controller here? If so, we need to add an integrator state
+    # T_i = T1
+
+    # Sump level controller parameters
+    if cff_max is None:
+        u_cff_ss = INPUTS_NOP["cyclone_feed_flow"]
+        level_ss = OUTPUTS_NOP["sump_level"]
+        cff_max = (
+            u_cff_ss
+            * (sump_level_max - sump_level_min)
+            / (level_ss - sump_level_min)
+        )
+
+    Kc_sump = cff_max / (sump_level_max - sump_level_min)
+
+    base = build_grinding_circuit_model(
+        sump_volume=sump_volume,
+        ball_volume=ball_volume,
+        mill_volume=mill_volume,
+        **model_kwargs,
+    )
+
+    # Closed-loop model (sump level controller): u_CFF is internal, shown as output
+    CL_INPUT_NAMES = INPUT_NAMES.copy()
+    CL_INPUT_NAMES.remove("cyclone_feed_flow")
+    CL_INPUT_NAMES.remove("feed_ore_rate")
+    CL_OUTPUT_NAMES = OUTPUT_NAMES + ["cyclone_feed_flow", "feed_ore_rate"]
+
+    # Cyclone_feed_flow and feed_ore_rate are now controlled
+    N_CL_INPUTS = len(CL_INPUT_NAMES)  # 3
+    N_CL_OUTPUTS = len(CL_OUTPUT_NAMES)  # 7
+
+    t = cas.SX.sym("t")
+    x = cas.SX.sym("x", N_STATES)
+    u = cas.SX.sym("u", N_CL_INPUTS)
+
+    # Sump level (%) from state — same formula as base model eq. (10)
+    x_sw = x[4]  # sump water volume (m³)
+    x_ss = x[5]  # sump solids volume (m³)
+    y_SLEV_ctrl = 100.0 * (x_sw + x_ss) / sump_volume
+
+    # Sump level P controller with saturation
+    u_CFF = cas.fmin(
+        float(cff_max), cas.fmax(0.0, Kc_sump * (y_SLEV_ctrl - sump_level_min))
+    )
+
+    # Charge level from state — same formula as base model eq. (5)
+    x_mw = x[0]
+    x_ms = x[1]
+    x_mr = x[2]
+    ball_volume = base.params.get("ball_volume", ball_volume)
+    mill_volume = base.params.get("mill_volume", mill_volume)
+    y_JT = (x_mw + x_ms + x_mr + ball_volume) / mill_volume
+
+    # Charge level P Controller with saturation
+    u_mfo = cas.fmin(
+        float(mfo_max),
+        cas.fmax(
+            float(mfo_min),
+            mfo_nop + K_c_mfo * (charge_fill_fraction_sp - y_JT),
+        ),
+    )
+
+    # Full 5-element input vector for the base model
+    u_full = cas.vertcat(u_mfo, u, u_CFF)
+    assert u_full.shape == (N_INPUTS, 1)
+
+    # Compose with base model (calling a CasADi Function with SX args returns SX)
+    sym_params = base.params
+    rhs = base.f(t, x, u_full, *sym_params.values())
+    y_base = base.h(t, x, u_full, *sym_params.values())
+
+    # Append additional output variables for monitoring controller actions
+    y_cl = cas.vertcat(y_base, u_CFF, u_mfo)
+    assert y_cl.shape == (N_CL_OUTPUTS, 1)
 
     f_func = cas.Function(
         "f_cl",

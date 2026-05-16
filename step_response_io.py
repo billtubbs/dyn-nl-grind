@@ -480,6 +480,8 @@ def plot_abstract(
 
 
 if __name__ == "__main__":
+    import argparse
+
     from cas_models.continuous_time.simulate import (
         make_n_step_simulation_function_from_model,
         make_steady_state_solver,
@@ -487,8 +489,17 @@ if __name__ == "__main__":
     from model import (
         INPUTS_NOP,
         STATES_NOP,
+        build_grinding_circuit_model_with_level_control,
         build_grinding_circuit_model_with_sump_control,
     )
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--model",
+        default="c1_grind_sc",
+        choices=["c1_grind_sc", "c1_grind_sc_lc"],
+    )
+    args = parser.parse_args()
 
     PLOT_DIR = Path("plots")
     PLOT_DIR.mkdir(parents=True, exist_ok=True)
@@ -547,12 +558,21 @@ if __name__ == "__main__":
             "symbol": r"$u_{CFF}$",
             "units": "m³/h",
         },
+        "feed_ore_rate": {
+            "label": "Feed ore rate",
+            "symbol": r"$u_{MFO}$",
+            "units": "t/h",
+        },
     }
 
     # ── Build model ───────────────────────────────────────────────────────
+    MODEL_BUILDERS = {
+        "c1_grind_sc": build_grinding_circuit_model_with_sump_control,
+        "c1_grind_sc_lc": build_grinding_circuit_model_with_level_control,
+    }
     print("Building model...")
-    model = build_grinding_circuit_model_with_sump_control()
-    print(f"  Model: n={model.n}, nu={model.nu}, ny={model.ny}")
+    model = MODEL_BUILDERS[args.model]()
+    print(f"  Model: {model.name}, n={model.n}, nu={model.nu}, ny={model.ny}")
 
     INPUT_NAMES = model.input_names
     OUTPUT_NAMES = model.output_names
@@ -617,7 +637,7 @@ if __name__ == "__main__":
     fracs_str = ", ".join(f"{f:+.0%}" for f in STEP_FRACTIONS)
     PLOT_TITLE = (
         f"Grinding Circuit – Step Responses ({fracs_str}, "
-        f"step at {STEP_TIME_H:.0f} h)"
+        f"step at {STEP_TIME_H:.0f} h)\n({model.name})"
     )
 
     plot_main(
@@ -630,13 +650,13 @@ if __name__ == "__main__":
         output_info=OUTPUT_INFO,
         ylim_from=YLIM_FROM,
         title=PLOT_TITLE,
-        save_path=PLOT_DIR / "step_io_resp.png",
+        save_path=PLOT_DIR / f"step_io_resp_{model.name}.png",
     )
-    print(f"\nSaved {PLOT_DIR}/step_io_resp.png")
+    print(f"\nSaved {PLOT_DIR}/step_io_resp_{model.name}.png")
 
     PLOT_TITLE = (
         f"Grinding Circuit – Step Responses "
-        f"({STEP_FRACTIONS[0]:+.0%} to {STEP_FRACTIONS[-1]:+.0%})"
+        f"({STEP_FRACTIONS[0]:+.0%} to {STEP_FRACTIONS[-1]:+.0%})\n({model.name})"
     )
 
     plot_abstract(
@@ -649,8 +669,8 @@ if __name__ == "__main__":
         output_info=OUTPUT_INFO,
         ylim_from=YLIM_FROM,
         title=PLOT_TITLE,
-        save_path=PLOT_DIR / "step_io_abstract.png",
+        save_path=PLOT_DIR / f"step_io_abstract_{model.name}.png",
     )
-    print(f"Saved {PLOT_DIR}/step_io_abstract.png")
+    print(f"Saved {PLOT_DIR}/step_io_abstract_{model.name}.png")
 
     plt.show()

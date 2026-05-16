@@ -460,12 +460,23 @@ def plot_abstract(
 
 
 if __name__ == "__main__":
+    import argparse
+
     from cas_models.continuous_time.simulate import make_steady_state_solver
     from model import (
         INPUTS_NOP,
         STATES_NOP,
+        build_grinding_circuit_model_with_level_control,
         build_grinding_circuit_model_with_sump_control,
     )
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--model",
+        default="c1_grind_sc",
+        choices=["c1_grind_sc", "c1_grind_sc_lc"],
+    )
+    args = parser.parse_args()
 
     PLOT_DIR = Path("plots")
     PLOT_DIR.mkdir(parents=True, exist_ok=True)
@@ -524,18 +535,25 @@ if __name__ == "__main__":
             "symbol": r"$u_{CFF}$",
             "units": "m³/h",
         },
+        "feed_ore_rate": {
+            "label": "Feed ore rate",
+            "symbol": r"$u_{MFO}$",
+            "units": "t/h",
+        },
     }
 
     # ── Build model and steady-state solver ──────────────────────────────
+    MODEL_BUILDERS = {
+        "c1_grind_sc": build_grinding_circuit_model_with_sump_control,
+        "c1_grind_sc_lc": build_grinding_circuit_model_with_level_control,
+    }
     print("Building model and compiling steady-state solver...")
-    model = build_grinding_circuit_model_with_sump_control()
+    model = MODEL_BUILDERS[args.model]()
     ss_solver = make_steady_state_solver(model)
-    print(f"  Model: n={model.n}, nu={model.nu}, ny={model.ny}")
+    print(f"  Model: {model.name}, n={model.n}, nu={model.nu}, ny={model.ny}")
 
-    INPUT_NAMES = model.input_names  # 4 free inputs
-    OUTPUT_NAMES = (
-        model.output_names
-    )  # 6 outputs (5 process + cyclone_feed_flow)
+    INPUT_NAMES = model.input_names
+    OUTPUT_NAMES = model.output_names
 
     # ── Compute actual nominal steady state from paper's inputs ──────────
     u_nom = np.array([INPUTS_NOP[n] for n in INPUT_NAMES])
@@ -591,7 +609,9 @@ if __name__ == "__main__":
         )
 
     # ── Plots ─────────────────────────────────────────────────────────────
-    PLOT_TITLE = "Grinding circuit – Steady-state I/O characteristics"
+    PLOT_TITLE = (
+        f"Grinding circuit – Steady-state I/O characteristics\n({model.name})"
+    )
 
     plot_main(
         results,
@@ -604,9 +624,9 @@ if __name__ == "__main__":
         output_info=OUTPUT_INFO,
         boundaries=boundaries,
         title=PLOT_TITLE,
-        save_path=PLOT_DIR / "ss_io_resp.png",
+        save_path=PLOT_DIR / f"ss_io_resp_{model.name}.png",
     )
-    print(f"\nSaved {PLOT_DIR}/ss_io_resp.png")
+    print(f"\nSaved {PLOT_DIR}/ss_io_resp_{model.name}.png")
 
     plot_abstract(
         results,
@@ -619,8 +639,8 @@ if __name__ == "__main__":
         output_info=OUTPUT_INFO,
         boundaries=boundaries,
         title=PLOT_TITLE,
-        save_path=PLOT_DIR / "ss_io_abstract.png",
+        save_path=PLOT_DIR / f"ss_io_abstract_{model.name}.png",
     )
-    print(f"Saved {PLOT_DIR}/ss_io_abstract.png")
+    print(f"Saved {PLOT_DIR}/ss_io_abstract_{model.name}.png")
 
     plt.show()
