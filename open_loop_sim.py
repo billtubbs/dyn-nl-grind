@@ -17,9 +17,9 @@ from cas_models.continuous_time.simulate import (
 from model import (
     CL_INPUT_NAMES,
     CL_OUTPUT_NAMES,
+    INPUTS_NOP,
     STATE_NAMES,
-    STEADY_STATE_INPUTS,
-    STEADY_STATE_STATES,
+    STATES_NOP,
     build_grinding_circuit_model_with_sump_control,
 )
 
@@ -38,9 +38,9 @@ T_STEP_H = 120.0 / 60.0
 STEP_IDX = int(T_STEP_H / DT_H)
 FEED_STEP_VALUE = 1100.0  # t/h
 
-# Initial conditions and constant inputs from Tables 4 & 5
-x0 = np.array([STEADY_STATE_STATES[n] for n in STATE_NAMES])
-u0 = np.array([STEADY_STATE_INPUTS[n] for n in CL_INPUT_NAMES])
+# Initial conditions and constant inputs from the normal operating point (NOP)
+x0 = np.array([STATES_NOP[n] for n in STATE_NAMES])
+u0 = np.array([INPUTS_NOP[n] for n in CL_INPUT_NAMES])
 
 print("Building model with sump level control...")
 model = build_grinding_circuit_model_with_sump_control()
@@ -78,7 +78,7 @@ axes = axes.flatten()
 for i, (ax, label) in enumerate(zip(axes, state_labels)):
     ax.plot(t_eval, X[:, i], color=f"C{i}")
     ax.axhline(
-        x0[i], color="grey", linestyle="--", linewidth=0.8, label="Paper SS"
+        x0[i], color="grey", linestyle="--", linewidth=0.8, label="NOP"
     )
     ax.axvline(T_STEP_H, color="k", linestyle=":", linewidth=0.8)
     ax.set_title(label, fontsize=9)

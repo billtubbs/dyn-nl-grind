@@ -40,13 +40,13 @@ the test suite.
 
 ```python
 import numpy as np
-from model import build_grinding_circuit_model, STEADY_STATE_STATES, STEADY_STATE_INPUTS
+from model import build_grinding_circuit_model, STATES_NOP, INPUTS_NOP
 
 model = build_grinding_circuit_model()
 # model.n=7 states, model.nu=5 inputs, model.ny=5 outputs
 
-x0 = np.array([STEADY_STATE_STATES[n] for n in model.state_names])
-u0 = np.array([STEADY_STATE_INPUTS[n] for n in model.input_names])
+x0 = np.array([STATES_NOP[n] for n in model.state_names])
+u0 = np.array([INPUTS_NOP[n] for n in model.input_names])
 
 dxdt = np.array(model.f(0.0, x0, u0)).flatten()  # state derivatives (m³/h)
 y0   = np.array(model.h(0.0, x0, u0)).flatten()   # outputs at this operating point
@@ -64,7 +64,7 @@ import numpy as np
 from cas_models.continuous_time.simulate import make_n_step_simulation_function_from_model
 from model import (
     build_grinding_circuit_model_with_sump_control,
-    STEADY_STATE_STATES, STEADY_STATE_INPUTS,
+    STATES_NOP, INPUTS_NOP,
 )
 
 model = build_grinding_circuit_model_with_sump_control()
@@ -74,8 +74,8 @@ dt      = 60 / 3600        # 1-minute sample time in hours
 n_steps = int(6.0 / dt)    # 6-hour simulation
 sim = make_n_step_simulation_function_from_model(model, dt=dt, nT=n_steps)
 
-x0     = np.array([STEADY_STATE_STATES[n] for n in model.state_names])
-u0     = np.array([STEADY_STATE_INPUTS[n] for n in model.input_names])
+x0     = np.array([STATES_NOP[n] for n in model.state_names])
+u0     = np.array([INPUTS_NOP[n] for n in model.input_names])
 t_eval = np.linspace(0.0, 6.0, n_steps + 1)   # hours
 U      = np.tile(u0, (n_steps, 1))             # constant inputs, shape (n_steps, 4)
 

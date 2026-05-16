@@ -64,9 +64,10 @@ CL_INPUT_NAMES = INPUT_NAMES[
 ]  # feed_ore_rate, water_ore_ratio, critical_speed_fraction, sump_feed_water
 CL_OUTPUT_NAMES = OUTPUT_NAMES + ["cyclone_feed_flow"]
 
-# Steady-state operating condition from Table 4 (Le Roux & Steyn, 2022).
-# States from Table 5 (calculated via the step-wise calibration procedure).
-STEADY_STATE_INPUTS = {
+# Normal operating point (NOP) — inputs from Table 4 (Le Roux & Steyn, 2022).
+# States and outputs are solver-computed from these inputs; the paper's rounded
+# values (Tables 4 & 5) are kept in tests/test_model.py for approx. validation.
+INPUTS_NOP = {
     "feed_ore_rate": 1191.0,  # u_MFO  (t/h)
     "water_ore_ratio": 0.572,  # u_rMIW (-)
     "critical_speed_fraction": 0.768,  # u_phic (-)
@@ -74,22 +75,22 @@ STEADY_STATE_INPUTS = {
     "cyclone_feed_flow": 2921.0,  # u_CFF  (m³/h)
 }
 
-STEADY_STATE_STATES = {
-    "water_volume": 31.0,  # x_mw  (m³)
-    "solids_volume": 31.1,  # x_ms  (m³)
-    "rock_volume": 9.84,  # x_mr  (m³)
-    "fines_volume": 5.22,  # x_mf  (m³)
-    "sump_water_volume": 133.0,  # x_sw  (m³)
-    "sump_solids_volume": 72.2,  # x_ss  (m³)
-    "sump_fines_volume": 12.1,  # x_sf  (m³)
+STATES_NOP = {
+    "water_volume": 30.789,  # x_mw  (m³)
+    "solids_volume": 30.723,  # x_ms  (m³)
+    "rock_volume": 9.6708,  # x_mr  (m³)
+    "fines_volume": 5.2661,  # x_mf  (m³)
+    "sump_water_volume": 132.87,  # x_sw  (m³)
+    "sump_solids_volume": 71.641,  # x_ss  (m³)
+    "sump_fines_volume": 12.280,  # x_sf  (m³)
 }
 
-STEADY_STATE_OUTPUTS = {
-    "charge_fill_fraction": 0.328,  # y_JT   (-)
-    "mill_power": 14.8,  # y_Pmill (MW)
-    "sump_level": 59.4,  # y_SLEV  (%)
-    "sump_density": 1.77,  # y_rho   (t/m³)
-    "product_size": 37.9,  # y_PSE   (%)
+OUTPUTS_NOP = {
+    "charge_fill_fraction": 0.3257,  # y_JT   (-)
+    "mill_power": 14.85,  # y_Pmill (MW)
+    "sump_level": 59.27,  # y_SLEV  (%)
+    "sump_density": 1.771,  # y_rho   (t/m³)
+    "product_size": 35.51,  # y_PSE   (%)
 }
 
 
@@ -397,8 +398,8 @@ def build_grinding_circuit_model_with_sump_control(
         plus cyclone_feed_flow so the controller action can be monitored).
     """
     if cff_max is None:
-        u_cff_ss = STEADY_STATE_INPUTS["cyclone_feed_flow"]
-        level_ss = STEADY_STATE_OUTPUTS["sump_level"]
+        u_cff_ss = INPUTS_NOP["cyclone_feed_flow"]
+        level_ss = OUTPUTS_NOP["sump_level"]
         cff_max = u_cff_ss * (level_max - level_min) / (level_ss - level_min)
 
     base = build_grinding_circuit_model(

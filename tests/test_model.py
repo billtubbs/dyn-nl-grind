@@ -21,12 +21,35 @@ from model import (
     INPUT_NAMES,
     OUTPUT_NAMES,
     STATE_NAMES,
-    STEADY_STATE_INPUTS,
-    STEADY_STATE_OUTPUTS,
-    STEADY_STATE_STATES,
     build_grinding_circuit_model,
     build_grinding_circuit_model_with_sump_control,
 )
+
+# Paper values (Tables 4 & 5, Le Roux & Steyn 2022) — rounded to 3–4 sig figs.
+# Used here for approximate validation only; model.py holds solver-computed NOP.
+_PAPER_INPUTS = {
+    "feed_ore_rate": 1191.0,
+    "water_ore_ratio": 0.572,
+    "critical_speed_fraction": 0.768,
+    "sump_feed_water": 870.0,
+    "cyclone_feed_flow": 2921.0,
+}
+_PAPER_STATES = {
+    "water_volume": 31.0,
+    "solids_volume": 31.1,
+    "rock_volume": 9.84,
+    "fines_volume": 5.22,
+    "sump_water_volume": 133.0,
+    "sump_solids_volume": 72.2,
+    "sump_fines_volume": 12.1,
+}
+_PAPER_OUTPUTS = {
+    "charge_fill_fraction": 0.328,
+    "mill_power": 14.8,
+    "sump_level": 59.4,
+    "sump_density": 1.77,
+    "product_size": 37.9,
+}
 
 
 @pytest.fixture(scope="module")
@@ -36,12 +59,12 @@ def model():
 
 @pytest.fixture(scope="module")
 def ss_x():
-    return np.array([STEADY_STATE_STATES[n] for n in STATE_NAMES])
+    return np.array([_PAPER_STATES[n] for n in STATE_NAMES])
 
 
 @pytest.fixture(scope="module")
 def ss_u():
-    return np.array([STEADY_STATE_INPUTS[n] for n in INPUT_NAMES])
+    return np.array([_PAPER_INPUTS[n] for n in INPUT_NAMES])
 
 
 class TestModelDimensions:
@@ -85,7 +108,7 @@ class TestSteadyState:
         within 2 % for all variables except product_size (see separate test).
         """
         y = np.array(model.h(0.0, ss_x, ss_u)).flatten()
-        y_expected = np.array([STEADY_STATE_OUTPUTS[n] for n in OUTPUT_NAMES])
+        y_expected = np.array([_PAPER_OUTPUTS[n] for n in OUTPUT_NAMES])
         print("\nOutputs at steady state:")
         for name, val, exp in zip(OUTPUT_NAMES, y, y_expected):
             pct = 100 * (val - exp) / exp
@@ -103,7 +126,7 @@ class TestSteadyState:
         """
         y = np.array(model.h(0.0, ss_x, ss_u)).flatten()
         y_pse = y[OUTPUT_NAMES.index("product_size")]
-        y_pse_expected = STEADY_STATE_OUTPUTS["product_size"]
+        y_pse_expected = _PAPER_OUTPUTS["product_size"]
         print(
             f"\n  product_size: computed={y_pse:.4f}  expected={y_pse_expected}"
         )
@@ -117,7 +140,7 @@ def model_cl():
 
 @pytest.fixture(scope="module")
 def ss_u_cl():
-    return np.array([STEADY_STATE_INPUTS[n] for n in CL_INPUT_NAMES])
+    return np.array([_PAPER_INPUTS[n] for n in CL_INPUT_NAMES])
 
 
 class TestSteadyStateWithSumpControl:
@@ -146,8 +169,8 @@ class TestSteadyStateWithSumpControl:
             )
 
         print("\nTrue steady-state outputs vs. Table 4:")
-        y_expected = np.array([STEADY_STATE_OUTPUTS[n] for n in OUTPUT_NAMES])
-        cff_ss = STEADY_STATE_INPUTS["cyclone_feed_flow"]
+        y_expected = np.array([_PAPER_OUTPUTS[n] for n in OUTPUT_NAMES])
+        cff_ss = _PAPER_INPUTS["cyclone_feed_flow"]
         y_ref = list(y_expected) + [cff_ss]
         for name, actual, exp in zip(CL_OUTPUT_NAMES, y_ss_actual, y_ref):
             print(

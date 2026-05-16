@@ -144,7 +144,8 @@ def compute_step_responses(
         step_sizes_arr = np.asarray(step_sizes[input_name], dtype=float)
         step_fracs = step_sizes_arr / u_nom[j]
         output_arrays = {
-            out: np.full((n_steps + 1, n_fracs), np.nan) for out in output_names
+            out: np.full((n_steps + 1, n_fracs), np.nan)
+            for out in output_names
         }
 
         print(f"  {input_name}:")
@@ -281,7 +282,9 @@ def plot_main(
 
         for row, output_name in enumerate(output_names):
             ax = axs[row, col]
-            output_matrix = input_entry.get(output_name)  # (n_steps+1, n_fracs)
+            output_matrix = input_entry.get(
+                output_name
+            )  # (n_steps+1, n_fracs)
 
             if output_matrix is not None:
                 for k, color in enumerate(colors):
@@ -301,7 +304,9 @@ def plot_main(
             ax.grid(True, alpha=0.3)
 
             if col == 0:
-                ax.set_ylabel(_axis_label(output_name, output_info), fontsize=8)
+                ax.set_ylabel(
+                    _axis_label(output_name, output_info), fontsize=8
+                )
             if row == 0:
                 ax.set_title(_axis_label(input_name, input_info), fontsize=8)
             if row == n_outputs - 1:
@@ -313,7 +318,9 @@ def plot_main(
         ylim_from_ = ylim_from or {}
         for row, output_name in enumerate(output_names):
             governing = ylim_from_.get(output_name, input_names)
-            arrays = [step_data.get(inp, {}).get(output_name) for inp in governing]
+            arrays = [
+                step_data.get(inp, {}).get(output_name) for inp in governing
+            ]
             limit = _compute_ylim(
                 [a for a in arrays if a is not None], clip_quantile
             )
@@ -454,7 +461,9 @@ def plot_abstract(
         ylim_from_ = ylim_from or {}
         for row, output_name in enumerate(output_names):
             governing = ylim_from_.get(output_name, input_names)
-            arrays = [step_data.get(inp, {}).get(output_name) for inp in governing]
+            arrays = [
+                step_data.get(inp, {}).get(output_name) for inp in governing
+            ]
             limit = _compute_ylim(
                 [a for a in arrays if a is not None], clip_quantile
             )
@@ -476,8 +485,8 @@ if __name__ == "__main__":
         make_steady_state_solver,
     )
     from model import (
-        STEADY_STATE_INPUTS,
-        STEADY_STATE_STATES,
+        INPUTS_NOP,
+        STATES_NOP,
         build_grinding_circuit_model_with_sump_control,
     )
 
@@ -550,8 +559,8 @@ if __name__ == "__main__":
 
     # ── Compute actual nominal steady state ───────────────────────────────
     ss_solver = make_steady_state_solver(model)
-    u_nom = np.array([STEADY_STATE_INPUTS[n] for n in INPUT_NAMES])
-    x0_guess = np.array([STEADY_STATE_STATES[n] for n in model.state_names])
+    u_nom = np.array([INPUTS_NOP[n] for n in INPUT_NAMES])
+    x0_guess = np.array([STATES_NOP[n] for n in model.state_names])
     param_vals = {}
 
     x_ss, y_ss = ss_solver(x0_guess, u_nom, param_vals)
@@ -621,9 +630,9 @@ if __name__ == "__main__":
         output_info=OUTPUT_INFO,
         ylim_from=YLIM_FROM,
         title=PLOT_TITLE,
-        save_path=PLOT_DIR / "step_io_main.png",
+        save_path=PLOT_DIR / "step_io_resp.png",
     )
-    print(f"\nSaved {PLOT_DIR}/step_io_main.png")
+    print(f"\nSaved {PLOT_DIR}/step_io_resp.png")
 
     PLOT_TITLE = (
         f"Grinding Circuit – Step Responses "

@@ -117,7 +117,9 @@ def compute_ss_sweeps(
     u_nom = np.asarray(u_nom, dtype=float)
 
     if all_input_names is not None:
-        input_u_idx = {name: all_input_names.index(name) for name in input_names}
+        input_u_idx = {
+            name: all_input_names.index(name) for name in input_names
+        }
     else:
         input_u_idx = {name: j for j, name in enumerate(input_names)}
 
@@ -309,7 +311,10 @@ def plot_main(
                 alpha=0.6,
             )
             ax.plot(nom_input, y_nom_dict[output_name], "ko", markersize=4)
-            for bound in (input_bounds.get("upper"), input_bounds.get("lower")):
+            for bound in (
+                input_bounds.get("upper"),
+                input_bounds.get("lower"),
+            ):
                 if bound is not None:
                     ax.axvline(
                         bound,
@@ -321,7 +326,9 @@ def plot_main(
             ax.grid(True, alpha=0.3)
 
             if col == 0:
-                ax.set_ylabel(_axis_label(output_name, output_info), fontsize=8)
+                ax.set_ylabel(
+                    _axis_label(output_name, output_info), fontsize=8
+                )
             if row == n_outputs - 1:
                 ax.set_xlabel(_axis_label(input_name, input_info), fontsize=7)
 
@@ -420,7 +427,10 @@ def plot_abstract(
                 alpha=0.6,
             )
             ax.plot(nom_input, y_nom_dict[output_name], "ko", markersize=3)
-            for bound in (input_bounds.get("upper"), input_bounds.get("lower")):
+            for bound in (
+                input_bounds.get("upper"),
+                input_bounds.get("lower"),
+            ):
                 if bound is not None:
                     ax.axvline(
                         bound,
@@ -452,8 +462,8 @@ def plot_abstract(
 if __name__ == "__main__":
     from cas_models.continuous_time.simulate import make_steady_state_solver
     from model import (
-        STEADY_STATE_INPUTS,
-        STEADY_STATE_STATES,
+        INPUTS_NOP,
+        STATES_NOP,
         build_grinding_circuit_model_with_sump_control,
     )
 
@@ -523,11 +533,13 @@ if __name__ == "__main__":
     print(f"  Model: n={model.n}, nu={model.nu}, ny={model.ny}")
 
     INPUT_NAMES = model.input_names  # 4 free inputs
-    OUTPUT_NAMES = model.output_names  # 6 outputs (5 process + cyclone_feed_flow)
+    OUTPUT_NAMES = (
+        model.output_names
+    )  # 6 outputs (5 process + cyclone_feed_flow)
 
     # ── Compute actual nominal steady state from paper's inputs ──────────
-    u_nom = np.array([STEADY_STATE_INPUTS[n] for n in INPUT_NAMES])
-    x0_guess = np.array([STEADY_STATE_STATES[n] for n in model.state_names])
+    u_nom = np.array([INPUTS_NOP[n] for n in INPUT_NAMES])
+    x0_guess = np.array([STATES_NOP[n] for n in model.state_names])
     param_vals = {}  # all parameters are concrete numerics in the default model
 
     x_ss_nom, y_ss_nom = ss_solver(x0_guess, u_nom, param_vals)
@@ -574,7 +586,9 @@ if __name__ == "__main__":
             parts.append(f"lower={lo:.4g}")
         if hi is not None:
             parts.append(f"upper={hi:.4g}")
-        print(f"  {input_name:<25} {', '.join(parts) if parts else 'none found'}")
+        print(
+            f"  {input_name:<25} {', '.join(parts) if parts else 'none found'}"
+        )
 
     # ── Plots ─────────────────────────────────────────────────────────────
     PLOT_TITLE = "Grinding circuit – Steady-state I/O characteristics"
@@ -590,9 +604,9 @@ if __name__ == "__main__":
         output_info=OUTPUT_INFO,
         boundaries=boundaries,
         title=PLOT_TITLE,
-        save_path=PLOT_DIR / "ss_io_main.png",
+        save_path=PLOT_DIR / "ss_io_resp.png",
     )
-    print(f"\nSaved {PLOT_DIR}/ss_io_main.png")
+    print(f"\nSaved {PLOT_DIR}/ss_io_resp.png")
 
     plot_abstract(
         results,
