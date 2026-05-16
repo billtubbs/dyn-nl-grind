@@ -1,4 +1,4 @@
-"""Tests for model_cld.py.
+"""Tests for model.py.
 
 The steady-state tests check that the calibrated operating condition from
 Table 4 and the state values from Table 5 (Le Roux & Steyn, 2022) are
@@ -14,7 +14,10 @@ and may warrant further investigation of the cyclone sub-model.
 import numpy as np
 import pytest
 
-from model_cld import (
+from cas_models.continuous_time.simulate import make_steady_state_solver
+from model import (
+    CL_INPUT_NAMES,
+    CL_OUTPUT_NAMES,
     INPUT_NAMES,
     OUTPUT_NAMES,
     STATE_NAMES,
@@ -22,11 +25,12 @@ from model_cld import (
     STEADY_STATE_OUTPUTS,
     STEADY_STATE_STATES,
     build_grinding_circuit_model,
+    build_grinding_circuit_model_with_sump_control,
 )
 
 # Derive charge_porosity from x_mb = 105 m³ (Table 5) using eq. (32a):
 #   x_mb = (1 - ε_p) * J_B * v_mill
-_J_B = 0.30      # ball_fill_fraction default
+_J_B = 0.30  # ball_fill_fraction default
 _V_MILL = 540.9  # mill_volume default
 _X_MB_SS = 105.0
 CHARGE_POROSITY_SS = 1.0 - _X_MB_SS / (_J_B * _V_MILL)
@@ -48,6 +52,8 @@ def ss_u():
 
 
 class TestModelDimensions:
+    """Verify the model's declared dimensions and name lists."""
+
     def test_state_count(self, model):
         assert model.n == 7
 
@@ -68,6 +74,8 @@ class TestModelDimensions:
 
 
 class TestSteadyState:
+    """Check the open-loop model against the paper's tabulated steady-state values."""
+
     def test_derivatives_near_zero(self, model, ss_x, ss_u):
         """f(t, x_ss, u_ss) derivatives should be small at the calibrated
         steady state.  Residuals up to ~5 m³/h are acceptable given the
@@ -88,7 +96,9 @@ class TestSteadyState:
         print("\nOutputs at steady state:")
         for name, val, exp in zip(OUTPUT_NAMES, y, y_expected):
             pct = 100 * (val - exp) / exp
-            print(f"  {name}: computed={val:.4f}  expected={exp}  ({pct:+.1f} %)")
+            print(
+                f"  {name}: computed={val:.4f}  expected={exp}  ({pct:+.1f} %)"
+            )
         # Check all outputs except product_size (index 4) to 2 %
         np.testing.assert_allclose(y[:4], y_expected[:4], rtol=0.02)
 
@@ -101,5 +111,56 @@ class TestSteadyState:
         y = np.array(model.h(0.0, ss_x, ss_u)).flatten()
         y_pse = y[OUTPUT_NAMES.index("product_size")]
         y_pse_expected = STEADY_STATE_OUTPUTS["product_size"]
-        print(f"\n  product_size: computed={y_pse:.4f}  expected={y_pse_expected}")
+        print(
+            f"\n  product_size: computed={y_pse:.4f}  expected={y_pse_expected}"
+        )
         np.testing.assert_allclose(y_pse, y_pse_expected, rtol=0.15)
+
+
+@pytest.fixture(scope="module")
+def model_cl():
+    return build_grinding_circuit_model_with_sump_control(
+        charge_porosity=CHARGE_POROSITY_SS
+    )
+
+
+@pytest.fixture(scope="module")
+def ss_u_cl():
+    return np.array([STEADY_STATE_INPUTS[n] for n in CL_INPUT_NAMES])
+
+
+class TestSteadyStateWithSumpControl:
+    """Steady-state tests for the closed-loop model.
+
+    With u_CFF set by the P controller the sump Jacobian degeneracy is
+    resolved, so make_steady_state_solver should converge.
+    """
+
+    def test_actual_steady_state(self, model_cl, ss_x, ss_u_cl):
+        """Solve for the true steady state of the level-controlled model and
+        compare to the paper's tabulated states from Table 5.
+        """
+        solve = make_steady_state_solver(model_cl)
+        x_ss_actual, y_ss_actual = solve(ss_x, ss_u_cl, {})
+
+        rhs = np.array(model_cl.f(0.0, x_ss_actual, ss_u_cl)).flatten()
+        print("\nState derivatives at true steady state (m³/h):")
+        for name, val in zip(STATE_NAMES, rhs):
+            print(f"  d({name})/dt = {val:+.6f}")
+
+        print("\nComparison: true vs. paper steady-state states:")
+        for name, actual, paper in zip(STATE_NAMES, x_ss_actual, ss_x):
+            print(
+                f"  {name}: actual={actual:.4f}  paper={paper:.4f}  diff={actual - paper:+.4f}"
+            )
+
+        print("\nTrue steady-state outputs vs. Table 4:")
+        y_expected = np.array([STEADY_STATE_OUTPUTS[n] for n in OUTPUT_NAMES])
+        cff_ss = STEADY_STATE_INPUTS["cyclone_feed_flow"]
+        y_ref = list(y_expected) + [cff_ss]
+        for name, actual, exp in zip(CL_OUTPUT_NAMES, y_ss_actual, y_ref):
+            print(
+                f"  {name}: actual={actual:.4f}  paper={exp}  ({100 * (actual - exp) / exp:+.1f} %)"
+            )
+
+        np.testing.assert_allclose(rhs, 0.0, atol=1e-6)
