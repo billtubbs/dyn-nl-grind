@@ -384,7 +384,7 @@ def build_grinding_circuit_model_with_sump_control(
     level_min : float
         Sump level (%) at which u_CFF = 0.  Default 5.0.
     level_max : float
-        Sump level (%) at which u_CFF = cff_max.  Default 60.0.
+        Sump level (%) at which u_CFF = cff_max.  Default 80.0.
     cff_max : float or None
         Maximum cyclone feed flow (m³/h).  If None, derived from the paper's
         steady-state inputs and outputs.

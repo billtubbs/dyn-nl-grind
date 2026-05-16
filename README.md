@@ -60,7 +60,7 @@ y0   = np.array(model.h(0.0, x0, u0)).flatten()   # outputs at this operating po
 The open-loop model (constant `u_CFF`) is unstable — the sump drains or
 overflows without level control.  `build_grinding_circuit_model_with_sump_control`
 embeds a proportional controller that manipulates the cyclone feed pump (`u_CFF`)
-to maintain the sump level between configurable limits (default 5 %–60 %).
+to maintain the sump level between configurable limits (default 5 %–80 %).
 
 ```python
 import numpy as np
