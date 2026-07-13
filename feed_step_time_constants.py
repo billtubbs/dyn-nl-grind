@@ -10,6 +10,7 @@ Run:
 
 import os
 import numpy as np
+import pandas as pd
 import matplotlib.pyplot as plt
 from cas_models.continuous_time.simulate import (
     make_n_step_simulation_function_from_model,
@@ -20,8 +21,89 @@ from model import (
     STATES_NOP,
 )
 
+
+def plot_step_responses(t_eval, rows, y_traces, feed_nom):
+    """Plot charge fill fraction step responses for all feed rate steps."""
+    t_rel = t_eval - T_STEP_H
+    fig, axes = plt.subplots(2, 3, figsize=(11, 6), sharex=True, sharey=True)
+    axes_flat = axes.flatten()
+    y0_nop = rows[0][2]
+
+    for ax, (dU, feed, y0_val, y_ss, delta, _, converged, tau), y in zip(
+        axes_flat, rows, y_traces
+    ):
+        color = "C0" if dU > 0 else "C1"
+        ax.axhline(
+            y0_nop, color="grey", linestyle="--", linewidth=0.8, label="NOP"
+        )
+        ax.axvline(0, color="k", linestyle=":", linewidth=0.8)
+        ax.plot(t_rel, y, color=color, linewidth=1.0)
+
+        if not np.isnan(tau):
+            thresh = y0_val + TAU_FRAC * delta
+            ax.scatter(
+                [tau / 60.0],
+                [thresh],
+                marker="x",
+                s=60,
+                color="k",
+                zorder=5,
+                label=f"\u03c4 = {tau:.0f} min",
+            )
+            ax.legend(fontsize=7, loc="best")
+        else:
+            ax.text(
+                0.97,
+                0.5,
+                "oscillating",
+                transform=ax.transAxes,
+                ha="right",
+                va="center",
+                fontsize=7,
+                color="C3",
+            )
+            ax.legend(fontsize=7, loc="best")
+
+        ax.set_title(f"\u0394feed = {dU:+.0f} t/h  (feed = {feed:.0f} t/h)", fontsize=8)
+        ax.set_ylabel(OUTPUT_NAME.replace("_", " "), fontsize=8)
+        ax.grid(True, alpha=0.3)
+
+    for ax in axes[1]:
+        ax.set_xlabel("Time after step (h)", fontsize=8)
+
+    fig.suptitle(
+        f"Charge fill fraction step responses \u2014 feed rate steps from NOP ({feed_nom:.0f} t/h)\n"
+        f"(dt = {DT_SEC:.0f} s,  T = {T_SIM_H:.0f} h)",
+        fontsize=10,
+    )
+    fig.tight_layout()
+    plt.savefig(os.path.join(PLOT_DIR, "feed_step_time_constants.png"), dpi=150)
+    print(f"\nSaved {PLOT_DIR}/feed_step_time_constants.png")
+    plt.show()
+
+
+def build_sim_results(model, t_eval, sim_data):
+    """Build MultiIndex DataFrames from simulation data."""
+    col_index = pd.MultiIndex.from_tuples(
+        [("inputs", n) for n in model.input_names]
+        + [("states", n) for n in model.state_names]
+        + [("outputs", n) for n in model.output_names],
+        names=["category", "variable"],
+    )
+    dfs = []
+    for dU, (U_arr, X, Y) in zip(STEP_SIZES, sim_data):
+        U_full = np.vstack([U_arr, U_arr[-1:]])
+        row_index = pd.Index(t_eval - T_STEP_H, name="time_rel_h")
+        data = np.hstack([U_full, X, Y])
+        dfs.append(pd.DataFrame(data, index=row_index, columns=col_index))
+
+    return dfs
+
+
 PLOT_DIR = "plots"
 os.makedirs(PLOT_DIR, exist_ok=True)
+RESULTS_DIR = "results"
+os.makedirs(RESULTS_DIR, exist_ok=True)
 
 DT_SEC = 60.0
 DT_H = DT_SEC / 3600.0
@@ -56,14 +138,18 @@ print(
 
 rows = []
 y_traces = []
+sim_data = []  # list of (U_arr, X, Y) for each step
 
 for dU in STEP_SIZES:
     U = np.tile(u0, (N_STEPS, 1))
     U[STEP_IDX:, FEED_IDX] += dU
 
-    _, Y_cas = sim(t_eval, U, x0)
-    y = np.array(Y_cas)[:, OUTPUT_IDX]
+    X_cas, Y_cas = sim(t_eval, U, x0)
+    X = np.array(X_cas)  # (N_STEPS+1, n_states)
+    Y = np.array(Y_cas)  # (N_STEPS+1, ny)
+    y = Y[:, OUTPUT_IDX]
     y_traces.append(y)
+    sim_data.append((U.copy(), X, Y))
 
     y0_val = y[STEP_IDX]
     y_ss = y[-1]
@@ -126,60 +212,17 @@ print(
 )
 
 # --- Plots ---
-t_rel = t_eval - T_STEP_H  # time relative to step
+plot_step_responses(t_eval, rows, y_traces, feed_nom)
 
-fig, axes = plt.subplots(2, 3, figsize=(11, 6), sharex=True, sharey=True)
-axes_flat = axes.flatten()
-y0_nop = rows[0][2]
+# --- Build simulation results DataFrame ---
+dfs = build_sim_results(model, t_eval, sim_data)
+sim_results = pd.concat(dfs, keys=STEP_SIZES, names=["feed_step_th", "time_rel_h"])
 
-for ax, (dU, feed, y0_val, y_ss, delta, _, converged, tau), y in zip(
-    axes_flat, rows, y_traces
-):
-    color = "C0" if dU > 0 else "C1"
-    ax.axhline(
-        y0_nop, color="grey", linestyle="--", linewidth=0.8, label="NOP"
-    )
-    ax.axvline(0, color="k", linestyle=":", linewidth=0.8)
-    ax.plot(t_rel, y, color=color, linewidth=1.0)
+csv_path = os.path.join(RESULTS_DIR, "feed_step_sim_results.csv")
+sim_results.to_csv(csv_path)
+print(f"Saved {csv_path}  ({sim_results.shape[0]} rows x {sim_results.shape[1]} cols)")
 
-    if not np.isnan(tau):
-        thresh = y0_val + TAU_FRAC * delta
-        ax.scatter(
-            [tau / 60.0],
-            [thresh],
-            marker="x",
-            s=60,
-            color="k",
-            zorder=5,
-            label=f"τ = {tau:.0f} min",
-        )
-        ax.legend(fontsize=7, loc="best")
-    else:
-        ax.text(
-            0.97,
-            0.5,
-            "oscillating",
-            transform=ax.transAxes,
-            ha="right",
-            va="center",
-            fontsize=7,
-            color="C3",
-        )
-        ax.legend(fontsize=7, loc="best")
-
-    ax.set_title(f"Δfeed = {dU:+.0f} t/h  (feed = {feed:.0f} t/h)", fontsize=8)
-    ax.set_ylabel(OUTPUT_NAME.replace("_", " "), fontsize=8)
-    ax.grid(True, alpha=0.3)
-
-for ax in axes[1]:
-    ax.set_xlabel("Time after step (h)", fontsize=8)
-
-fig.suptitle(
-    f"Charge fill fraction step responses — feed rate steps from NOP ({feed_nom:.0f} t/h)\n"
-    f"(dt = {DT_SEC:.0f} s,  T = {T_SIM_H:.0f} h)",
-    fontsize=10,
-)
-fig.tight_layout()
-plt.savefig(os.path.join(PLOT_DIR, "feed_step_time_constants.png"), dpi=150)
-print(f"\nSaved {PLOT_DIR}/feed_step_time_constants.png")
-plt.show()
+for i, df in enumerate(dfs, start=1):
+    csv_path_i = os.path.join(RESULTS_DIR, f"feed_step_sim_results_{i}.csv")
+    df.to_csv(csv_path_i)
+    print(f"Saved {csv_path_i}")
