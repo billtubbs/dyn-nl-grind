@@ -16,9 +16,6 @@ from cas_models.continuous_time.simulate import (
 )
 from model import (
     build_grinding_circuit_model_with_sump_control,
-    CL_INPUT_NAMES,
-    CL_OUTPUT_NAMES,
-    STATE_NAMES,
     INPUTS_NOP,
     STATES_NOP,
 )
@@ -33,20 +30,22 @@ N_STEPS = int(T_SIM_H / DT_H)
 T_STEP_H = 0.5  # step applied at 30 min
 STEP_IDX = int(T_STEP_H / DT_H)
 
-FEED_IDX = CL_INPUT_NAMES.index("feed_ore_rate")
-OUTPUT_NAME = "charge_fill_fraction"
-OUTPUT_IDX = CL_OUTPUT_NAMES.index(OUTPUT_NAME)
-
 STEP_SIZES = [-150, -100, -50, 50, 100, 150]  # t/h
 TAU_FRAC = 0.623
 CONVERGE_TOL = 0.005  # max std of last 2 h as fraction of |delta|
 
 print("Building model...")
 model = build_grinding_circuit_model_with_sump_control()
+
+INPUT_NAME = "feed_ore_rate"
+OUTPUT_NAME = "charge_fill_fraction"
+FEED_IDX = model.input_names.index(INPUT_NAME)
+OUTPUT_IDX = model.output_names.index(OUTPUT_NAME)
+
 sim = make_n_step_simulation_function_from_model(model, dt=DT_H, nT=N_STEPS)
 
-x0 = np.array([STATES_NOP[n] for n in STATE_NAMES])
-u0 = np.array([INPUTS_NOP[n] for n in CL_INPUT_NAMES])
+x0 = np.array([STATES_NOP[n] for n in model.state_names])
+u0 = np.array([INPUTS_NOP[n] for n in model.input_names])
 feed_nom = u0[FEED_IDX]
 t_eval = np.linspace(0.0, T_SIM_H, N_STEPS + 1)
 
