@@ -13,7 +13,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from cas_models.continuous_time.simulate import (
-    make_n_step_simulation_function_from_model,
+    make_sim_step_function_integrator_fixed_dt,
 )
 from model import (
     build_grinding_circuit_model_with_sump_control,
@@ -51,17 +51,6 @@ def plot_step_responses(t_eval, rows, y_traces, feed_nom):
                 label=f"\u03c4 = {tau:.0f} min",
             )
             ax.legend(fontsize=7, loc="best")
-        else:
-            ax.text(
-                0.97,
-                0.5,
-                "oscillating",
-                transform=ax.transAxes,
-                ha="right",
-                va="center",
-                fontsize=7,
-                color="C3",
-            )
             ax.legend(fontsize=7, loc="best")
 
         ax.set_title(f"\u0394feed = {dU:+.0f} t/h  (feed = {feed:.0f} t/h)", fontsize=8)
@@ -107,7 +96,7 @@ os.makedirs(RESULTS_DIR, exist_ok=True)
 
 DT_SEC = 60.0
 DT_H = DT_SEC / 3600.0
-T_SIM_H = 48.0
+T_SIM_H = 20.0
 N_STEPS = int(T_SIM_H / DT_H)
 T_STEP_H = 0.5  # step applied at 30 min
 STEP_IDX = int(T_STEP_H / DT_H)
@@ -124,7 +113,53 @@ OUTPUT_NAME = "charge_fill_fraction"
 FEED_IDX = model.input_names.index(INPUT_NAME)
 OUTPUT_IDX = model.output_names.index(OUTPUT_NAME)
 
-sim = make_n_step_simulation_function_from_model(model, dt=DT_H, nT=N_STEPS)
+# Options for 'RK' solver:
+# integrator_opts = {
+#     'number_of_finite_elements': 1,  # Sub-steps per interval
+# }
+SOLVER = "cvodes"
+INTEGRATOR_OPTS = {
+    "max_num_steps": 1000,  # default 500 — raise for stiff dynamics near boundaries
+    "reltol": 1e-5,          # slightly looser than default 1e-6 for speed
+}
+
+sim_step = make_sim_step_function_integrator_fixed_dt(
+    model.f, model.n, model.nu, DT_H,
+    params=model.params, solver=SOLVER, integrator_opts=INTEGRATOR_OPTS,
+    name="F_step",
+)
+_param_vals = list(model.params.values())  # empty for default (concrete) parameters
+
+STATE_MIN = 0.01  # m³ — stop simulation if any volume drops below this
+
+
+def run_sim(t_eval, U, x0):
+    """Run simulation step by step in Python.
+
+    Stops early and prints a warning if any state volume drops below STATE_MIN,
+    leaving the remainder of X and Y filled with NaN.
+    """
+    X = np.full((len(t_eval), model.n), np.nan)
+    Y = np.full((len(t_eval), model.ny), np.nan)
+    x = x0.copy()
+    X[0] = x
+    Y[0] = np.array(model.h(t_eval[0], x, U[0], *_param_vals)).flatten()
+    for k in range(len(t_eval) - 1):
+        x_next = np.array(sim_step(t_eval[k], x, U[k], *_param_vals)).flatten()
+        below = [model.state_names[i] for i in np.where(x_next < STATE_MIN)[0]]
+        if below:
+            print(
+                f"  STOP at step {k + 1} "
+                f"(t_rel={t_eval[k + 1] - T_STEP_H:+.3f} h): "
+                f"{below} below {STATE_MIN} m³"
+            )
+            break
+        x = x_next
+        X[k + 1] = x
+        Y[k + 1] = np.array(
+            model.h(t_eval[k + 1], x, U[min(k + 1, len(U) - 1)], *_param_vals)
+        ).flatten()
+    return X, Y
 
 x0 = np.array([STATES_NOP[n] for n in model.state_names])
 u0 = np.array([INPUTS_NOP[n] for n in model.input_names])
@@ -144,9 +179,7 @@ for dU in STEP_SIZES:
     U = np.tile(u0, (N_STEPS, 1))
     U[STEP_IDX:, FEED_IDX] += dU
 
-    X_cas, Y_cas = sim(t_eval, U, x0)
-    X = np.array(X_cas)  # (N_STEPS+1, n_states)
-    Y = np.array(Y_cas)  # (N_STEPS+1, ny)
+    X, Y = run_sim(t_eval, U, x0)
     y = Y[:, OUTPUT_IDX]
     y_traces.append(y)
     sim_data.append((U.copy(), X, Y))

@@ -104,6 +104,7 @@ K_FINES_PRODUCTION_JT = 20.0  # K_FPjt: fines-production fill sens.   — Table 
 K_ROCK_CONSUMPTION = 5.97e-3  # K_RC (MWh/t): rock consumption        — Table 5
 MILL_VOLUME = 540.9  # v_mill (m³)                           — Table 4
 PHI_NORM = 0.70  # φ_N: rheology normalisation factor    — Table 5
+PHI_BETA = 20.0  # β: softplus sharpness for φ smoothing  (larger → closer to paper)
 POWER_MAX = 19.7  # P_max (MW): maximum mill power draw   — Table 4
 # Sump
 SUMP_VOLUME = 345.8  # v_sump (m³)                           — Table 4
@@ -142,6 +143,7 @@ def build_grinding_circuit_model(
     k_rock_consumption=K_ROCK_CONSUMPTION,
     mill_volume=MILL_VOLUME,
     phi_norm=PHI_NORM,
+    phi_beta=PHI_BETA,
     power_max=POWER_MAX,
     sump_volume=SUMP_VOLUME,
     cyclone_alpha_underflow=CYCLONE_ALPHA_UNDERFLOW,
@@ -176,6 +178,7 @@ def build_grinding_circuit_model(
         k_rock_consumption=k_rock_consumption,
         mill_volume=mill_volume,
         phi_norm=phi_norm,
+        phi_beta=phi_beta,
         power_max=power_max,
         sump_volume=sump_volume,
         cyclone_alpha_underflow=cyclone_alpha_underflow,
@@ -200,6 +203,7 @@ def build_grinding_circuit_model(
     k_rock_consumption = params["k_rock_consumption"]
     mill_volume = params["mill_volume"]
     phi_norm = params["phi_norm"]
+    phi_beta = params["phi_beta"]
     power_max = params["power_max"]
     sump_volume = params["sump_volume"]
     cyclone_alpha_underflow = params["cyclone_alpha_underflow"]
@@ -229,6 +233,15 @@ def build_grinding_circuit_model(
     u_SFW = u[3]  # sump feed water (m³/h)
     u_CFF = u[4]  # cyclone feed flow (m³/h)
 
+    # Volume floors — prevent division-by-zero when the integrator drives a
+    # state transiently negative.  1e-6 m³ ≪ all physical steady-state volumes
+    # (~5–130 m³), so these guards are inactive during normal operation.
+    _EPS = 1e-6
+    x_mw_p        = cas.fmax(x_mw, _EPS)          # mill water
+    x_ss_p        = cas.fmax(x_ss,  _EPS)          # sump solids
+    mill_slurry_p = cas.fmax(x_ms + x_mw, _EPS)   # mill water + solids
+    sump_slurry_p = cas.fmax(x_sw + x_ss, _EPS)   # sump water + solids
+
     # ------------------------------------------------------------------
     # Mill intermediate variables
     # ------------------------------------------------------------------
@@ -238,16 +251,18 @@ def build_grinding_circuit_model(
     # Mill charge fraction, eq. (5)
     y_JT = (x_mw + x_ms + x_mr + x_mb) / mill_volume
 
-    # Rheology factor φ, eq. (3)
-    # φ = sqrt(1 - (ε₀⁻¹ - 1) x_ms/x_mw)  for x_ms/x_mw ≤ ε₀/(1-ε₀), else 0
+    # Rheology factor φ — softplus smoothing of paper eq. (3).
+    # Paper: φ = sqrt(max(0, 1 - ε_slope·r))  where r = x_ms/x_mw.
+    # Softplus replaces max(0, x) with log(1+exp(β·x))/β, giving a C∞
+    # function with no conditional branches (safe for any CasADi integrator).
+    # β=PHI_BETA controls sharpness: larger β → closer to paper formula.
     eps_slope = 1.0 / epsilon_zero - 1.0  # ε₀⁻¹ - 1
-    eps_threshold = 1.0 / eps_slope  # (ε₀⁻¹ - 1)⁻¹ = ε₀/(1-ε₀)
-    ratio_ms_mw = x_ms / x_mw
-    phi = cas.if_else(
-        ratio_ms_mw <= eps_threshold,
-        cas.sqrt(1.0 - eps_slope * ratio_ms_mw),
-        0.0,
-    )
+    ratio_ms_mw = x_ms / x_mw_p
+    _sp_arg = phi_beta * (1.0 - eps_slope * ratio_ms_mw)
+    # Numerically stable softplus: log(1+exp(x)) = max(x,0) + log(1+exp(-|x|))
+    # Avoids exp overflow when x_mw is transiently negative in RK4 stages.
+    _softplus = cas.fmax(_sp_arg, 0.0) + cas.log(1.0 + cas.exp(-cas.fabs(_sp_arg)))
+    phi = cas.sqrt(_softplus / phi_beta)
 
     # Mill power draw, eq. (6)
     y_Pmill = (
@@ -261,13 +276,12 @@ def build_grinding_circuit_model(
     )
 
     # Mill discharge flow-rates, eq. (2)
-    mill_slurry = x_ms + x_mw
-    Q_mwo = phi * discharge_rate * x_mw * (x_mw / mill_slurry)  # eq. (2a)
-    Q_mso = phi * discharge_rate * x_mw * (x_ms / mill_slurry)  # eq. (2b)
-    Q_mfo = phi * discharge_rate * x_mw * (x_mf / mill_slurry)  # eq. (2c)
+    Q_mwo = phi * discharge_rate * x_mw * (x_mw / mill_slurry_p)  # eq. (2a)
+    Q_mso = phi * discharge_rate * x_mw * (x_ms / mill_slurry_p)  # eq. (2b)
+    Q_mfo = phi * discharge_rate * x_mw * (x_mf / mill_slurry_p)  # eq. (2c)
 
     # Rock consumption and fines production, eq. (4)
-    Q_RC = (x_mr * y_Pmill) / (rho_ore * k_rock_consumption * (x_mr + x_ms))
+    Q_RC = (x_mr * y_Pmill) / (rho_ore * k_rock_consumption * cas.fmax(x_mr + x_ms, _EPS))
     Q_FP = y_Pmill / (
         rho_ore
         * k_fines_production
@@ -279,18 +293,17 @@ def build_grinding_circuit_model(
     # ------------------------------------------------------------------
 
     # Sump discharge flow-rates, eq. (9)
-    sump_slurry = x_sw + x_ss
-    Q_swo = u_CFF * (x_sw / sump_slurry)  # eq. (9a)
-    Q_sso = u_CFF * (x_ss / sump_slurry)  # eq. (9b)
-    Q_sfo = u_CFF * (x_sf / sump_slurry)  # eq. (9c)
+    Q_swo = u_CFF * (x_sw / sump_slurry_p)  # eq. (9a)
+    Q_sso = u_CFF * (x_ss / sump_slurry_p)  # eq. (9b)
+    Q_sfo = u_CFF * (x_sf / sump_slurry_p)  # eq. (9c)
 
     # ------------------------------------------------------------------
     # Cyclone intermediate variables
     # ------------------------------------------------------------------
 
     # Feed fractions (sec. 3.2, step 2.8)
-    F_i = Q_sso / u_CFF  # fraction solids in cyclone feed
-    P_i = Q_sfo / Q_sso  # fraction fines in the solids feed
+    F_i = x_ss / sump_slurry_p   # solids fraction in cyclone feed (= Q_sso/u_CFF)
+    P_i = x_sf / x_ss_p          # fines fraction in solids feed   (= Q_sfo/Q_sso)
 
     # Coarse underflow, eq. (12)
     Q_ccu = (
@@ -306,10 +319,15 @@ def build_grinding_circuit_model(
     )
 
     # Cyclone underflow flow-rates, eq. (15)
-    underflow_denom = F_u * Q_swo + F_u * Q_sfo - Q_sfo
-    Q_cwu = Q_swo * Q_ccu * (1.0 - F_u) / underflow_denom  # eq. (15a)
-    Q_cfu = Q_sfo * Q_ccu * (1.0 - F_u) / underflow_denom  # eq. (15b)
-    Q_csu = Q_ccu + Q_cfu  # eq. (15c)
+    # Clip the fraction to [0, 1] so Q_cwu ≤ Q_swo and Q_cfu ≤ Q_sfo always,
+    # preventing Inf when underflow_denom approaches zero transiently.
+    _uf_denom = F_u * Q_swo + F_u * Q_sfo - Q_sfo
+    _uf_frac = cas.fmin(
+        1.0, cas.fmax(0.0, Q_ccu * (1.0 - F_u) / cas.fmax(_uf_denom, _EPS))
+    )
+    Q_cwu = Q_swo * _uf_frac  # eq. (15a)
+    Q_cfu = Q_sfo * _uf_frac  # eq. (15b)
+    Q_csu = Q_ccu + Q_cfu     # eq. (15c)
 
     # ------------------------------------------------------------------
     # State equations f(t, x, u, p) — equations (1) and (8)
@@ -337,12 +355,12 @@ def build_grinding_circuit_model(
     y_SLEV = 100.0 * (x_ss + x_sw) / sump_volume
 
     # Sump discharge density, eq. (11)
-    y_rho = (rho_water * Q_swo + rho_ore * Q_sso) / (Q_swo + Q_sso)
+    y_rho = (rho_water * Q_swo + rho_ore * Q_sso) / cas.fmax(Q_swo + Q_sso, _EPS)
 
     # Product particle size, eq. (16)
     Q_cfo = Q_sfo - Q_cfu  # cyclone fines overflow
     Q_cso = Q_sso - Q_ccu  # cyclone solids overflow
-    y_PSE = 100.0 * (Q_cfo / Q_cso)
+    y_PSE = 100.0 * (Q_cfo / cas.fmax(Q_cso, _EPS))
 
     y = cas.vertcat(y_JT, y_Pmill, y_SLEV, y_rho, y_PSE)
     assert y.shape == (N_OUTPUTS, 1)
