@@ -22,6 +22,9 @@ from model import (
     build_grinding_circuit_model,
     build_grinding_circuit_model_with_level_control,
     build_grinding_circuit_model_with_sump_control,
+    calculate_mill_power,
+    calculate_rheology_factor,
+    calculate_rheology_factor_smoothed,
 )
 
 # Sump-level controlled model: u_CFF removed from inputs, added as output.
@@ -275,3 +278,41 @@ class TestGrindingCircuitModelWithLevelControl:
             )
 
         np.testing.assert_allclose(rhs, 0.0, atol=1e-6)
+
+
+class TestCalculationFunctions:
+    """Unit tests for the standalone calculation functions at the NOP."""
+
+    # NOP values from Tables 4 & 5 of Le Roux & Steyn (2022)
+    x_ms = _PAPER_STATES["solids_volume"]  # 31.1 m³
+    x_mw = _PAPER_STATES["water_volume"]  # 31.0 m³
+    u_phic = _PAPER_INPUTS["critical_speed_fraction"]  # 0.768
+    y_JT = _PAPER_OUTPUTS["charge_fill_fraction"]  # 0.328
+
+    def test_calculate_rheology_factor(self):
+        """Original paper eq. (3): φ = sqrt(1 - ε_slope · x_ms/x_mw).
+
+        Expected: sqrt(30.8/93) = sqrt(0.33118...) ≈ 0.57548
+        """
+        phi = float(calculate_rheology_factor(self.x_ms, self.x_mw))
+        np.testing.assert_allclose(phi, 0.57548, rtol=1e-4)
+
+    def test_calculate_rheology_factor_smoothed(self):
+        """Softplus-smoothed φ at the NOP with β=20.
+
+        Expected: sqrt(softplus(6.6237) / 20) ≈ 0.57554
+        """
+        phi_smooth = float(
+            calculate_rheology_factor_smoothed(self.x_ms, self.x_mw)
+        )
+        np.testing.assert_allclose(phi_smooth, 0.57554, rtol=1e-4)
+
+    def test_calculate_mill_power(self):
+        """Mill power eq. (6) at the NOP.
+
+        Expected: 19.7 × 0.768 × (1 − 0.0911×0.1816 − 0.0911×0.0316)
+                ≈ 14.836 MW
+        """
+        phi = float(calculate_rheology_factor(self.x_ms, self.x_mw))
+        y_Pmill = float(calculate_mill_power(self.u_phic, self.y_JT, phi))
+        np.testing.assert_allclose(y_Pmill, 14.836, rtol=1e-3)

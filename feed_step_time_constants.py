@@ -53,7 +53,9 @@ def plot_step_responses(t_eval, rows, y_traces, feed_nom):
             ax.legend(fontsize=7, loc="best")
             ax.legend(fontsize=7, loc="best")
 
-        ax.set_title(f"\u0394feed = {dU:+.0f} t/h  (feed = {feed:.0f} t/h)", fontsize=8)
+        ax.set_title(
+            f"\u0394feed = {dU:+.0f} t/h  (feed = {feed:.0f} t/h)", fontsize=8
+        )
         ax.set_ylabel(OUTPUT_NAME.replace("_", " "), fontsize=8)
         ax.grid(True, alpha=0.3)
 
@@ -66,7 +68,9 @@ def plot_step_responses(t_eval, rows, y_traces, feed_nom):
         fontsize=10,
     )
     fig.tight_layout()
-    plt.savefig(os.path.join(PLOT_DIR, "feed_step_time_constants.png"), dpi=150)
+    plt.savefig(
+        os.path.join(PLOT_DIR, "feed_step_time_constants.png"), dpi=150
+    )
     print(f"\nSaved {PLOT_DIR}/feed_step_time_constants.png")
     plt.show()
 
@@ -96,7 +100,7 @@ os.makedirs(RESULTS_DIR, exist_ok=True)
 
 DT_SEC = 60.0
 DT_H = DT_SEC / 3600.0
-T_SIM_H = 20.0
+T_SIM_H = 12.0
 N_STEPS = int(T_SIM_H / DT_H)
 T_STEP_H = 0.5  # step applied at 30 min
 STEP_IDX = int(T_STEP_H / DT_H)
@@ -120,15 +124,22 @@ OUTPUT_IDX = model.output_names.index(OUTPUT_NAME)
 SOLVER = "cvodes"
 INTEGRATOR_OPTS = {
     "max_num_steps": 1000,  # default 500 — raise for stiff dynamics near boundaries
-    "reltol": 1e-5,          # slightly looser than default 1e-6 for speed
+    "reltol": 1e-5,  # slightly looser than default 1e-6 for speed
 }
 
 sim_step = make_sim_step_function_integrator_fixed_dt(
-    model.f, model.n, model.nu, DT_H,
-    params=model.params, solver=SOLVER, integrator_opts=INTEGRATOR_OPTS,
+    model.f,
+    model.n,
+    model.nu,
+    DT_H,
+    params=model.params,
+    solver=SOLVER,
+    integrator_opts=INTEGRATOR_OPTS,
     name="F_step",
 )
-_param_vals = list(model.params.values())  # empty for default (concrete) parameters
+_param_vals = list(
+    model.params.values()
+)  # empty for default (concrete) parameters
 
 STATE_MIN = 0.01  # m³ — stop simulation if any volume drops below this
 
@@ -160,6 +171,7 @@ def run_sim(t_eval, U, x0):
             model.h(t_eval[k + 1], x, U[min(k + 1, len(U) - 1)], *_param_vals)
         ).flatten()
     return X, Y
+
 
 x0 = np.array([STATES_NOP[n] for n in model.state_names])
 u0 = np.array([INPUTS_NOP[n] for n in model.input_names])
@@ -249,11 +261,15 @@ plot_step_responses(t_eval, rows, y_traces, feed_nom)
 
 # --- Build simulation results DataFrame ---
 dfs = build_sim_results(model, t_eval, sim_data)
-sim_results = pd.concat(dfs, keys=STEP_SIZES, names=["feed_step_th", "time_rel_h"])
+sim_results = pd.concat(
+    dfs, keys=STEP_SIZES, names=["feed_step_th", "time_rel_h"]
+)
 
 csv_path = os.path.join(RESULTS_DIR, "feed_step_sim_results.csv")
 sim_results.to_csv(csv_path)
-print(f"Saved {csv_path}  ({sim_results.shape[0]} rows x {sim_results.shape[1]} cols)")
+print(
+    f"Saved {csv_path}  ({sim_results.shape[0]} rows x {sim_results.shape[1]} cols)"
+)
 
 for i, df in enumerate(dfs, start=1):
     csv_path_i = os.path.join(RESULTS_DIR, f"feed_step_sim_results_{i}.csv")

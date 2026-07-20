@@ -77,9 +77,7 @@ axes = axes.flatten()
 
 for i, (ax, label) in enumerate(zip(axes, state_labels)):
     ax.plot(t_eval, X[:, i], color=f"C{i}")
-    ax.axhline(
-        x0[i], color="grey", linestyle="--", linewidth=0.8, label="NOP"
-    )
+    ax.axhline(x0[i], color="grey", linestyle="--", linewidth=0.8, label="NOP")
     ax.axvline(T_STEP_H, color="k", linestyle=":", linewidth=0.8)
     ax.set_title(label, fontsize=9)
     ax.set_ylabel("m³")

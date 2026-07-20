@@ -104,7 +104,9 @@ K_FINES_PRODUCTION_JT = 20.0  # K_FPjt: fines-production fill sens.   — Table 
 K_ROCK_CONSUMPTION = 5.97e-3  # K_RC (MWh/t): rock consumption        — Table 5
 MILL_VOLUME = 540.9  # v_mill (m³)                           — Table 4
 PHI_NORM = 0.70  # φ_N: rheology normalisation factor    — Table 5
-PHI_BETA = 20.0  # β: softplus sharpness for φ smoothing  (larger → closer to paper)
+PHI_BETA = (
+    20.0  # β: softplus sharpness for φ smoothing  (larger → closer to paper)
+)
 POWER_MAX = 19.7  # P_max (MW): maximum mill power draw   — Table 4
 # Sump
 SUMP_VOLUME = 345.8  # v_sump (m³)                           — Table 4
@@ -125,6 +127,77 @@ MFO_MAX = 1500.0  # t/h — maximum ore feed rate
 
 # Charge-level P-controller plant gain — average of ±50 t/h step tests
 CHARGE_LEVEL_PLANT_GAIN = sum([-0.02576 / -50, 0.02300 / 50]) / 2
+
+
+def calculate_mill_power(
+    u_phic,
+    y_JT,
+    phi,
+    power_max=POWER_MAX,
+    fill_fraction_max_power=FILL_FRACTION_MAX_POWER,
+    delta_volume=DELTA_VOLUME,
+    phi_norm=PHI_NORM,
+    delta_solids=DELTA_SOLIDS,
+):
+    """Mill power draw, eq. (6)."""
+    y_Pmill = (
+        power_max
+        * u_phic
+        * (
+            1.0
+            - delta_volume * (y_JT / fill_fraction_max_power - 1.0) ** 2
+            - delta_solids * (phi / phi_norm - 1.0) ** 2
+        )
+    )
+    return y_Pmill
+
+
+def calculate_rheology_factor(
+    x_ms,
+    x_mw,
+    epsilon_zero=EPSILON_ZERO,
+):
+    """Rheology factor φ — original paper eq. (3).
+
+    φ = sqrt(1 - ε_slope · r)  for r ≤ ε₀/(1-ε₀), else 0
+    where r = x_ms/x_mw and ε_slope = ε₀⁻¹ - 1.
+
+    Note: uses cas.if_else, which introduces a discontinuity at the
+    threshold.  Use calculate_rheology_factor_smoothed for gradient-based
+    optimisation or when using stiff ODE integrators.
+    """
+    eps_slope = 1.0 / epsilon_zero - 1.0  # ε₀⁻¹ - 1
+    eps_threshold = 1.0 / eps_slope  # ε₀ / (1 - ε₀)
+    ratio_ms_mw = x_ms / x_mw
+    return cas.if_else(
+        ratio_ms_mw <= eps_threshold,
+        cas.sqrt(1.0 - eps_slope * ratio_ms_mw),
+        0.0,
+    )
+
+
+def calculate_rheology_factor_smoothed(
+    x_ms,
+    x_mw_p,
+    epsilon_zero=EPSILON_ZERO,
+    phi_beta=PHI_BETA,
+):
+    """Rheology factor φ — softplus-smoothed version of eq. (3).
+
+    Paper: φ = sqrt(max(0, 1 - ε_slope·r))  where r = x_ms/x_mw.
+    Softplus replaces max(0, x) with log(1+exp(β·x))/β, giving a C∞
+    function with no conditional branches (safe for any CasADi integrator).
+    β=phi_beta controls sharpness: larger β → closer to paper formula.
+    """
+    eps_slope = 1.0 / epsilon_zero - 1.0  # ε₀⁻¹ - 1
+    ratio_ms_mw = x_ms / x_mw_p
+    _sp_arg = phi_beta * (1.0 - eps_slope * ratio_ms_mw)
+    # Numerically stable softplus: log(1+exp(x)) = max(x,0) + log(1+exp(-|x|))
+    # Avoids exp overflow when x_mw is transiently negative in RK4 stages.
+    _softplus = cas.fmax(_sp_arg, 0.0) + cas.log(
+        1.0 + cas.exp(-cas.fabs(_sp_arg))
+    )
+    return cas.sqrt(_softplus / phi_beta)
 
 
 def build_grinding_circuit_model(
@@ -237,10 +310,10 @@ def build_grinding_circuit_model(
     # state transiently negative.  1e-6 m³ ≪ all physical steady-state volumes
     # (~5–130 m³), so these guards are inactive during normal operation.
     _EPS = 1e-6
-    x_mw_p        = cas.fmax(x_mw, _EPS)          # mill water
-    x_ss_p        = cas.fmax(x_ss,  _EPS)          # sump solids
-    mill_slurry_p = cas.fmax(x_ms + x_mw, _EPS)   # mill water + solids
-    sump_slurry_p = cas.fmax(x_sw + x_ss, _EPS)   # sump water + solids
+    x_mw_p = cas.fmax(x_mw, _EPS)  # mill water
+    x_ss_p = cas.fmax(x_ss, _EPS)  # sump solids
+    mill_slurry_p = cas.fmax(x_ms + x_mw, _EPS)  # mill water + solids
+    sump_slurry_p = cas.fmax(x_sw + x_ss, _EPS)  # sump water + solids
 
     # ------------------------------------------------------------------
     # Mill intermediate variables
@@ -251,28 +324,24 @@ def build_grinding_circuit_model(
     # Mill charge fraction, eq. (5)
     y_JT = (x_mw + x_ms + x_mr + x_mb) / mill_volume
 
-    # Rheology factor φ — softplus smoothing of paper eq. (3).
-    # Paper: φ = sqrt(max(0, 1 - ε_slope·r))  where r = x_ms/x_mw.
-    # Softplus replaces max(0, x) with log(1+exp(β·x))/β, giving a C∞
-    # function with no conditional branches (safe for any CasADi integrator).
-    # β=PHI_BETA controls sharpness: larger β → closer to paper formula.
-    eps_slope = 1.0 / epsilon_zero - 1.0  # ε₀⁻¹ - 1
-    ratio_ms_mw = x_ms / x_mw_p
-    _sp_arg = phi_beta * (1.0 - eps_slope * ratio_ms_mw)
-    # Numerically stable softplus: log(1+exp(x)) = max(x,0) + log(1+exp(-|x|))
-    # Avoids exp overflow when x_mw is transiently negative in RK4 stages.
-    _softplus = cas.fmax(_sp_arg, 0.0) + cas.log(1.0 + cas.exp(-cas.fabs(_sp_arg)))
-    phi = cas.sqrt(_softplus / phi_beta)
+    # Rheology factor φ, eq. (3)
+    phi = calculate_rheology_factor_smoothed(
+        x_ms,
+        x_mw_p,
+        epsilon_zero=epsilon_zero,
+        phi_beta=phi_beta,
+    )
 
-    # Mill power draw, eq. (6)
-    y_Pmill = (
-        power_max
-        * u_phic
-        * (
-            1.0
-            - delta_volume * (y_JT / fill_fraction_max_power - 1.0) ** 2
-            - delta_solids * (phi / phi_norm - 1.0) ** 2
-        )
+    # Mill power draw
+    y_Pmill = calculate_mill_power(
+        u_phic,
+        y_JT,
+        phi,
+        power_max=power_max,
+        fill_fraction_max_power=fill_fraction_max_power,
+        delta_volume=delta_volume,
+        phi_norm=phi_norm,
+        delta_solids=delta_solids,
     )
 
     # Mill discharge flow-rates, eq. (2)
@@ -281,7 +350,9 @@ def build_grinding_circuit_model(
     Q_mfo = phi * discharge_rate * x_mw * (x_mf / mill_slurry_p)  # eq. (2c)
 
     # Rock consumption and fines production, eq. (4)
-    Q_RC = (x_mr * y_Pmill) / (rho_ore * k_rock_consumption * cas.fmax(x_mr + x_ms, _EPS))
+    Q_RC = (x_mr * y_Pmill) / (
+        rho_ore * k_rock_consumption * cas.fmax(x_mr + x_ms, _EPS)
+    )
     Q_FP = y_Pmill / (
         rho_ore
         * k_fines_production
@@ -302,8 +373,10 @@ def build_grinding_circuit_model(
     # ------------------------------------------------------------------
 
     # Feed fractions (sec. 3.2, step 2.8)
-    F_i = x_ss / sump_slurry_p   # solids fraction in cyclone feed (= Q_sso/u_CFF)
-    P_i = x_sf / x_ss_p          # fines fraction in solids feed   (= Q_sfo/Q_sso)
+    F_i = (
+        x_ss / sump_slurry_p
+    )  # solids fraction in cyclone feed (= Q_sso/u_CFF)
+    P_i = x_sf / x_ss_p  # fines fraction in solids feed   (= Q_sfo/Q_sso)
 
     # Coarse underflow, eq. (12)
     Q_ccu = (
@@ -327,7 +400,7 @@ def build_grinding_circuit_model(
     )
     Q_cwu = Q_swo * _uf_frac  # eq. (15a)
     Q_cfu = Q_sfo * _uf_frac  # eq. (15b)
-    Q_csu = Q_ccu + Q_cfu     # eq. (15c)
+    Q_csu = Q_ccu + Q_cfu  # eq. (15c)
 
     # ------------------------------------------------------------------
     # State equations f(t, x, u, p) — equations (1) and (8)
@@ -355,7 +428,9 @@ def build_grinding_circuit_model(
     y_SLEV = 100.0 * (x_ss + x_sw) / sump_volume
 
     # Sump discharge density, eq. (11)
-    y_rho = (rho_water * Q_swo + rho_ore * Q_sso) / cas.fmax(Q_swo + Q_sso, _EPS)
+    y_rho = (rho_water * Q_swo + rho_ore * Q_sso) / cas.fmax(
+        Q_swo + Q_sso, _EPS
+    )
 
     # Product particle size, eq. (16)
     Q_cfo = Q_sfo - Q_cfu  # cyclone fines overflow

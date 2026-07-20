@@ -7,11 +7,16 @@ Run:
     python inspect_sim_result.py
 """
 
+import os
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
+
 # ── Configuration ──────────────────────────────────────────────────────────────
+PLOT_DIR = "plots"
+os.makedirs(PLOT_DIR, exist_ok=True)
+
 CSV_FILE = "results/feed_step_sim_results_2.csv"
 
 TIME_RANGE = (9.5, 10.5)  # (start, end) hours relative to step
@@ -32,11 +37,7 @@ t0, t1 = TIME_RANGE
 df_slice = df.loc[(df.index >= t0) & (df.index <= t1)]
 
 # ── Plot ───────────────────────────────────────────────────────────────────────
-var_list = [
-    (cat, var)
-    for cat, vars_ in PLOT_VARS.items()
-    for var in vars_
-]
+var_list = [(cat, var) for cat, vars_ in PLOT_VARS.items() for var in vars_]
 n = len(var_list)
 fig, axes = plt.subplots(n, 1, figsize=(9, 2.2 * n), sharex=True)
 if n == 1:
@@ -50,26 +51,28 @@ for ax, (cat, var) in zip(axes, var_list):
 
 axes[-1].set_xlabel("Time relative to step (h)", fontsize=9)
 fig.tight_layout()
+plt.savefig(os.path.join(PLOT_DIR, "inspect_sim_result.png"), dpi=150)
+print(f"\nSaved {PLOT_DIR}/inspect_sim_result.png")
 plt.show()
 
 # ── Mill power intermediate variables (eq. 6) ──────────────────────────────────
 # Constants from the model (Tables 4 & 5, Le Roux & Steyn 2022)
-EPSILON_ZERO = 0.60          # ε₀: max solids fraction at zero flow
-PHI_NORM = 0.70              # φ_N: rheology normalisation factor
-POWER_MAX = 19.7             # P_max (MW)
-DELTA_VOLUME = 0.0911        # δ_v: power param, mill fill volume
-DELTA_SOLIDS = 0.0911        # δ_s: power param, solids fraction
+EPSILON_ZERO = 0.60  # ε₀: max solids fraction at zero flow
+PHI_NORM = 0.70  # φ_N: rheology normalisation factor
+POWER_MAX = 19.7  # P_max (MW)
+DELTA_VOLUME = 0.0911  # δ_v: power param, mill fill volume
+DELTA_SOLIDS = 0.0911  # δ_s: power param, solids fraction
 FILL_FRACTION_MAX_POWER = 0.23  # J_TPmax: fill fraction at max power
-BALL_VOLUME = 105.0          # x_mb (m³)
-MILL_VOLUME = 540.9          # v_mill (m³)
+BALL_VOLUME = 105.0  # x_mb (m³)
+MILL_VOLUME = 540.9  # v_mill (m³)
 
 x_mw = df_slice[("states", "water_volume")]
 x_ms = df_slice[("states", "solids_volume")]
 x_mr = df_slice[("states", "rock_volume")]
 u_phic = df_slice[("inputs", "critical_speed_fraction")]
 
-eps_slope = 1.0 / EPSILON_ZERO - 1.0        # ε₀⁻¹ - 1
-eps_threshold = 1.0 / eps_slope              # ε₀ / (1 - ε₀)  = 1.5
+eps_slope = 1.0 / EPSILON_ZERO - 1.0  # ε₀⁻¹ - 1
+eps_threshold = 1.0 / eps_slope  # ε₀ / (1 - ε₀)  = 1.5
 ratio_ms_mw = x_ms / x_mw
 
 phi = np.where(
@@ -98,6 +101,8 @@ power_table = pd.DataFrame(
     index=df_slice.index,
 )
 
-print(f"\nMill power intermediates over t ∈ [{t0}, {t1}] h  "
-      f"(ε₀/(1-ε₀) threshold = {eps_threshold:.3f}):\n")
+print(
+    f"\nMill power intermediates over t ∈ [{t0}, {t1}] h  "
+    f"(ε₀/(1-ε₀) threshold = {eps_threshold:.3f}):\n"
+)
 print(power_table.round(4).to_string())
