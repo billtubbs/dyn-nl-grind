@@ -109,9 +109,7 @@ K_FINES_PRODUCTION_JT = 20.0  # K_FPjt: fines-production fill sens.   — Table 
 K_ROCK_CONSUMPTION = 5.97e-3  # K_RC (MWh/t): rock consumption        — Table 5
 MILL_VOLUME = 540.9  # v_mill (m³)                           — Table 4
 PHI_NORM = 0.70  # φ_N: rheology normalisation factor    — Table 5
-PHI_BETA = (
-    20.0  # β: softplus sharpness for φ smoothing  (larger → closer to paper)
-)
+PHI_BETA = 20.0  # β: softplus sharpness for φ smoothing
 POWER_MAX = 19.7  # P_max (MW): maximum mill power draw   — Table 4
 # Sump
 SUMP_VOLUME = 345.8  # v_sump (m³)                           — Table 4
@@ -194,7 +192,7 @@ def calculate_rheology_factor_smoothed(
     function with no conditional branches (safe for any CasADi integrator).
     β=phi_beta controls sharpness: larger β → closer to paper formula.
     """
-    eps_slope = 1.0 / epsilon_zero - 1.0  # ε₀⁻¹ - 1
+    eps_slope = 1.0 / epsilon_zero - 1.0
     ratio_ms_mw = x_ms / x_mw_p
     _sp_arg = phi_beta * (1.0 - eps_slope * ratio_ms_mw)
     # Numerically stable softplus: log(1+exp(x)) = max(x,0) + log(1+exp(-|x|))
