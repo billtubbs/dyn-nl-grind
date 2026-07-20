@@ -54,6 +54,11 @@ OUTPUT_NAMES = [
     "product_size",  # y_PSE (%)
 ]
 
+# Names for the sump-level controlled model (u_CFF removed from inputs, added
+# as a monitored output).
+CL_INPUT_NAMES = [n for n in INPUT_NAMES if n != "cyclone_feed_flow"]
+CL_OUTPUT_NAMES = OUTPUT_NAMES + ["cyclone_feed_flow"]
+
 # Normal operating point (NOP) — inputs from Table 4 (Le Roux & Steyn, 2022).
 # States and outputs are solver-computed from these inputs; the paper's rounded
 # values (Tables 4 & 5) are kept in tests/test_model.py for approx. validation.
@@ -232,8 +237,36 @@ def build_grinding_circuit_model(
     Pass None for any parameter to leave it as a free CasADi SX symbolic
     variable (useful for parameter estimation).
 
-    Returns:
-        StateSpaceModelCT with n=7, nu=5, ny=5.
+    State vector x (n=7)
+    --------------------
+    x[0]  water_volume          mill water volume            (m³)   [x_mw]
+    x[1]  solids_volume         mill solids volume           (m³)   [x_ms]
+    x[2]  rock_volume           mill rock volume             (m³)   [x_mr]
+    x[3]  fines_volume          mill fines volume            (m³)   [x_mf]
+    x[4]  sump_water_volume     sump water volume            (m³)   [x_sw]
+    x[5]  sump_solids_volume    sump solids volume           (m³)   [x_ss]
+    x[6]  sump_fines_volume     sump fines volume            (m³)   [x_sf]
+
+    Input vector u (nu=5)
+    ---------------------
+    u[0]  feed_ore_rate         mill feed ore rate           (t/h)  [u_MFO]
+    u[1]  water_ore_ratio       mill water-to-ore ratio      (-)    [u_rMIW]
+    u[2]  critical_speed_fraction  fraction of critical speed  (-)  [u_phic]
+    u[3]  sump_feed_water       sump feed water flow         (m³/h) [u_SFW]
+    u[4]  cyclone_feed_flow     cyclone feed pump flow       (m³/h) [u_CFF]
+
+    Output vector y (ny=5)
+    ----------------------
+    y[0]  charge_fill_fraction  mill charge fill fraction    (-)    [y_JT]
+    y[1]  mill_power            mill power draw              (MW)   [y_Pmill]
+    y[2]  sump_level            sump level                   (%)    [y_SLEV]
+    y[3]  sump_density          sump discharge density       (t/m³) [y_rho]
+    y[4]  product_size          product particle size (PSE)  (%)    [y_PSE]
+
+    Returns
+    -------
+    StateSpaceModelCT
+        Continuous-time state-space model with n=7, nu=5, ny=5.
     """
     params = make_symbolic_vars_from_kwargs(
         rho_ore=rho_ore,
@@ -291,51 +324,51 @@ def build_grinding_circuit_model(
     u = cas.SX.sym("u", N_INPUTS)
 
     # Unpack states
-    x_mw = x[0]  # mill water volume (m³)
-    x_ms = x[1]  # mill solids volume (m³)
-    x_mr = x[2]  # mill rock volume (m³)
-    x_mf = x[3]  # mill fines volume (m³)
-    x_sw = x[4]  # sump water volume (m³)
-    x_ss = x[5]  # sump solids volume (m³)
-    x_sf = x[6]  # sump fines volume (m³)
+    water_volume = x[0]
+    solids_volume = x[1]
+    rock_volume = x[2]
+    fines_volume = x[3]
+    sump_water_volume = x[4]
+    sump_solids_volume = x[5]
+    sump_fines_volume = x[6]
 
     # Unpack inputs
-    u_MFO = u[0]  # mill feed ore rate (t/h)
-    u_rMIW = u[1]  # mill water-to-ore ratio (-)
-    u_phic = u[2]  # fraction of critical mill speed (-)
-    u_SFW = u[3]  # sump feed water (m³/h)
-    u_CFF = u[4]  # cyclone feed flow (m³/h)
+    feed_ore_rate = u[0]
+    water_ore_ratio = u[1]
+    critical_speed_fraction = u[2]
+    sump_feed_water = u[3]
+    cyclone_feed_flow = u[4]
 
     # Volume floors — prevent division-by-zero when the integrator drives a
     # state transiently negative.  1e-6 m³ ≪ all physical steady-state volumes
     # (~5–130 m³), so these guards are inactive during normal operation.
     _EPS = 1e-6
-    x_mw_p = cas.fmax(x_mw, _EPS)  # mill water
-    x_ss_p = cas.fmax(x_ss, _EPS)  # sump solids
-    mill_slurry_p = cas.fmax(x_ms + x_mw, _EPS)  # mill water + solids
-    sump_slurry_p = cas.fmax(x_sw + x_ss, _EPS)  # sump water + solids
+    water_volume_p = cas.fmax(water_volume, _EPS)
+    sump_solids_volume_p = cas.fmax(sump_solids_volume, _EPS)
+    mill_slurry_p = cas.fmax(solids_volume + water_volume, _EPS)
+    sump_slurry_p = cas.fmax(sump_water_volume + sump_solids_volume, _EPS)
 
     # ------------------------------------------------------------------
     # Mill intermediate variables
     # ------------------------------------------------------------------
 
-    x_mb = ball_volume
-
     # Mill charge fraction, eq. (5)
-    y_JT = (x_mw + x_ms + x_mr + x_mb) / mill_volume
+    charge_fill_fraction = (
+        water_volume + solids_volume + rock_volume + ball_volume
+    ) / mill_volume
 
     # Rheology factor φ, eq. (3)
     phi = calculate_rheology_factor_smoothed(
-        x_ms,
-        x_mw_p,
+        solids_volume,
+        water_volume_p,
         epsilon_zero=epsilon_zero,
         phi_beta=phi_beta,
     )
 
-    # Mill power draw
-    y_Pmill = calculate_mill_power(
-        u_phic,
-        y_JT,
+    # Mill power draw, eq. (6)
+    mill_power = calculate_mill_power(
+        critical_speed_fraction,
+        charge_fill_fraction,
         phi,
         power_max=power_max,
         fill_fraction_max_power=fill_fraction_max_power,
@@ -344,44 +377,48 @@ def build_grinding_circuit_model(
         delta_solids=delta_solids,
     )
 
-    # Mill discharge flow-rates, eq. (2)
-    Q_mwo = phi * discharge_rate * x_mw * (x_mw / mill_slurry_p)  # eq. (2a)
-    Q_mso = phi * discharge_rate * x_mw * (x_ms / mill_slurry_p)  # eq. (2b)
-    Q_mfo = phi * discharge_rate * x_mw * (x_mf / mill_slurry_p)  # eq. (2c)
+    # Mill discharge flow-rates, eq. (2a-c)
+    Q_mwo = phi * discharge_rate * water_volume**2 / mill_slurry_p
+    Q_mso = phi * discharge_rate * water_volume * solids_volume / mill_slurry_p
+    Q_mfo = phi * discharge_rate * water_volume * fines_volume / mill_slurry_p
 
     # Rock consumption and fines production, eq. (4)
-    Q_RC = (x_mr * y_Pmill) / (
-        rho_ore * k_rock_consumption * cas.fmax(x_mr + x_ms, _EPS)
+    Q_RC = (rock_volume * mill_power) / (
+        rho_ore
+        * k_rock_consumption
+        * cas.fmax(rock_volume + solids_volume, _EPS)
     )
-    Q_FP = y_Pmill / (
+    Q_FP = mill_power / (
         rho_ore
         * k_fines_production
-        * (1.0 + k_fines_production_jt * (y_JT - fill_fraction_max_power))
+        * (
+            1.0
+            + k_fines_production_jt
+            * (charge_fill_fraction - fill_fraction_max_power)
+        )
     )
 
     # ------------------------------------------------------------------
     # Sump intermediate variables
     # ------------------------------------------------------------------
 
-    # Sump discharge flow-rates, eq. (9)
-    Q_swo = u_CFF * (x_sw / sump_slurry_p)  # eq. (9a)
-    Q_sso = u_CFF * (x_ss / sump_slurry_p)  # eq. (9b)
-    Q_sfo = u_CFF * (x_sf / sump_slurry_p)  # eq. (9c)
+    # Sump discharge flow-rates, eq. (9a-c)
+    Q_swo = cyclone_feed_flow * sump_water_volume / sump_slurry_p
+    Q_sso = cyclone_feed_flow * sump_solids_volume / sump_slurry_p
+    Q_sfo = cyclone_feed_flow * sump_fines_volume / sump_slurry_p
 
     # ------------------------------------------------------------------
     # Cyclone intermediate variables
     # ------------------------------------------------------------------
 
     # Feed fractions (sec. 3.2, step 2.8)
-    F_i = (
-        x_ss / sump_slurry_p
-    )  # solids fraction in cyclone feed (= Q_sso/u_CFF)
-    P_i = x_sf / x_ss_p  # fines fraction in solids feed   (= Q_sfo/Q_sso)
+    F_i = sump_solids_volume / sump_slurry_p  # solids fraction in cyclone feed
+    P_i = sump_fines_volume / sump_solids_volume_p  # fines fraction in solids
 
     # Coarse underflow, eq. (12)
     Q_ccu = (
         (Q_sso - Q_sfo)
-        * (1.0 - cyclone_c1 * cas.exp(-u_CFF / cyclone_epsilon_c))
+        * (1.0 - cyclone_c1 * cas.exp(-cyclone_feed_flow / cyclone_epsilon_c))
         * (1.0 - (F_i / cyclone_c2) ** cyclone_c3)
         * (1.0 - P_i**cyclone_c3)
     )
@@ -406,18 +443,29 @@ def build_grinding_circuit_model(
     # State equations f(t, x, u, p) — equations (1) and (8)
     # ------------------------------------------------------------------
 
-    dx_mw = u_rMIW * u_MFO / rho_water - Q_mwo + Q_cwu  # eq. (1a)
-    dx_ms = (
-        (1.0 - alpha_rocks) * u_MFO / rho_ore - Q_mso + Q_csu + Q_RC
-    )  # eq. (1b)
-    dx_mr = alpha_rocks * u_MFO / rho_ore - Q_RC  # eq. (1c)
-    dx_mf = alpha_fines * u_MFO / rho_ore - Q_mfo + Q_cfu + Q_FP  # eq. (1d)
+    d_water_volume = (  # eq. (1a)
+        water_ore_ratio * feed_ore_rate / rho_water - Q_mwo + Q_cwu
+    )
+    d_solids_volume = (  # eq. (1b)
+        (1.0 - alpha_rocks) * feed_ore_rate / rho_ore - Q_mso + Q_csu + Q_RC
+    )
+    d_rock_volume = alpha_rocks * feed_ore_rate / rho_ore - Q_RC  # eq. (1c)
+    d_fines_volume = (  # eq. (1d)
+        alpha_fines * feed_ore_rate / rho_ore - Q_mfo + Q_cfu + Q_FP
+    )
+    d_sump_water_volume = Q_mwo - Q_swo + sump_feed_water  # eq. (8a)
+    d_sump_solids_volume = Q_mso - Q_sso  # eq. (8b)
+    d_sump_fines_volume = Q_mfo - Q_sfo  # eq. (8c)
 
-    dx_sw = Q_mwo - Q_swo + u_SFW  # eq. (8a)
-    dx_ss = Q_mso - Q_sso  # eq. (8b)
-    dx_sf = Q_mfo - Q_sfo  # eq. (8c)
-
-    rhs = cas.vertcat(dx_mw, dx_ms, dx_mr, dx_mf, dx_sw, dx_ss, dx_sf)
+    rhs = cas.vertcat(
+        d_water_volume,
+        d_solids_volume,
+        d_rock_volume,
+        d_fines_volume,
+        d_sump_water_volume,
+        d_sump_solids_volume,
+        d_sump_fines_volume,
+    )
     assert rhs.shape == (N_STATES, 1)
 
     # ------------------------------------------------------------------
@@ -425,19 +473,25 @@ def build_grinding_circuit_model(
     # ------------------------------------------------------------------
 
     # Sump level, eq. (10)
-    y_SLEV = 100.0 * (x_ss + x_sw) / sump_volume
+    sump_level = 100.0 * (sump_solids_volume + sump_water_volume) / sump_volume
 
     # Sump discharge density, eq. (11)
-    y_rho = (rho_water * Q_swo + rho_ore * Q_sso) / cas.fmax(
+    sump_density = (rho_water * Q_swo + rho_ore * Q_sso) / cas.fmax(
         Q_swo + Q_sso, _EPS
     )
 
     # Product particle size, eq. (16)
     Q_cfo = Q_sfo - Q_cfu  # cyclone fines overflow
     Q_cso = Q_sso - Q_ccu  # cyclone solids overflow
-    y_PSE = 100.0 * (Q_cfo / cas.fmax(Q_cso, _EPS))
+    product_size = 100.0 * (Q_cfo / cas.fmax(Q_cso, _EPS))
 
-    y = cas.vertcat(y_JT, y_Pmill, y_SLEV, y_rho, y_PSE)
+    y = cas.vertcat(
+        charge_fill_fraction,
+        mill_power,
+        sump_level,
+        sump_density,
+        product_size,
+    )
     assert y.shape == (N_OUTPUTS, 1)
 
     # ------------------------------------------------------------------
@@ -512,12 +566,36 @@ def build_grinding_circuit_model_with_sump_control(
     **model_kwargs
         Forwarded verbatim to ``build_grinding_circuit_model``.
 
+    State vector x (n=7)
+    --------------------
+    x[0]  water_volume          mill water volume            (m³)   [x_mw]
+    x[1]  solids_volume         mill solids volume           (m³)   [x_ms]
+    x[2]  rock_volume           mill rock volume             (m³)   [x_mr]
+    x[3]  fines_volume          mill fines volume            (m³)   [x_mf]
+    x[4]  sump_water_volume     sump water volume            (m³)   [x_sw]
+    x[5]  sump_solids_volume    sump solids volume           (m³)   [x_ss]
+    x[6]  sump_fines_volume     sump fines volume            (m³)   [x_sf]
+
+    Input vector u (nu=4)
+    ---------------------
+    u[0]  feed_ore_rate         mill feed ore rate           (t/h)  [u_MFO]
+    u[1]  water_ore_ratio       mill water-to-ore ratio      (-)    [u_rMIW]
+    u[2]  critical_speed_fraction  fraction of critical speed  (-)  [u_phic]
+    u[3]  sump_feed_water       sump feed water flow         (m³/h) [u_SFW]
+
+    Output vector y (ny=6)
+    ----------------------
+    y[0]  charge_fill_fraction  mill charge fill fraction    (-)    [y_JT]
+    y[1]  mill_power            mill power draw              (MW)   [y_Pmill]
+    y[2]  sump_level            sump level                   (%)    [y_SLEV]
+    y[3]  sump_density          sump discharge density       (t/m³) [y_rho]
+    y[4]  product_size          product particle size (PSE)  (%)    [y_PSE]
+    y[5]  cyclone_feed_flow     cyclone feed pump flow (controlled)  (m³/h) [u_CFF]
+
     Returns
     -------
     StateSpaceModelCT
-        n=7 states, nu=4 inputs (feed_ore_rate, water_ore_ratio,
-        critical_speed_fraction, sump_feed_water), ny=6 outputs (original 5
-        plus cyclone_feed_flow so the controller action can be monitored).
+        Continuous-time state-space model with n=7, nu=4, ny=6.
     """
     if cff_max is None:
         u_cff_ss = INPUTS_NOP["cyclone_feed_flow"]
@@ -541,25 +619,27 @@ def build_grinding_circuit_model_with_sump_control(
     u = cas.SX.sym("u", N_CL_INPUTS)
 
     # Sump level (%) from state — same formula as base model eq. (10)
-    x_sw = x[4]  # sump water volume (m³)
-    x_ss = x[5]  # sump solids volume (m³)
-    y_SLEV_ctrl = 100.0 * (x_sw + x_ss) / sump_volume
+    sump_water_volume = x[4]
+    sump_solids_volume = x[5]
+    sump_level_ctrl = (
+        100.0 * (sump_water_volume + sump_solids_volume) / sump_volume
+    )
 
     # P controller with saturation
     Kp = cff_max / (level_max - level_min)
-    u_CFF = cas.fmin(
-        float(cff_max), cas.fmax(0.0, Kp * (y_SLEV_ctrl - level_min))
+    cyclone_feed_flow = cas.fmin(
+        float(cff_max), cas.fmax(0.0, Kp * (sump_level_ctrl - level_min))
     )
 
     # Full 5-element input vector for the base model
-    u_full = cas.vertcat(u, u_CFF)
+    u_full = cas.vertcat(u, cyclone_feed_flow)
     assert u_full.shape == (N_INPUTS, 1)
 
     # Compose with base model (calling a CasADi Function with SX args returns SX)
     sym_params = base.params
     rhs = base.f(t, x, u_full, *sym_params.values())
     y_base = base.h(t, x, u_full, *sym_params.values())
-    y_cl = cas.vertcat(y_base, u_CFF)
+    y_cl = cas.vertcat(y_base, cyclone_feed_flow)
     assert y_cl.shape == (N_CL_OUTPUTS, 1)
 
     f_func = cas.Function(
@@ -654,12 +734,36 @@ def build_grinding_circuit_model_with_level_control(
     **model_kwargs
         Forwarded verbatim to ``build_grinding_circuit_model``.
 
+    State vector x (n=7)
+    --------------------
+    x[0]  water_volume          mill water volume            (m³)   [x_mw]
+    x[1]  solids_volume         mill solids volume           (m³)   [x_ms]
+    x[2]  rock_volume           mill rock volume             (m³)   [x_mr]
+    x[3]  fines_volume          mill fines volume            (m³)   [x_mf]
+    x[4]  sump_water_volume     sump water volume            (m³)   [x_sw]
+    x[5]  sump_solids_volume    sump solids volume           (m³)   [x_ss]
+    x[6]  sump_fines_volume     sump fines volume            (m³)   [x_sf]
+
+    Input vector u (nu=3)
+    ---------------------
+    u[0]  water_ore_ratio       mill water-to-ore ratio      (-)    [u_rMIW]
+    u[1]  critical_speed_fraction  fraction of critical speed  (-)  [u_phic]
+    u[2]  sump_feed_water       sump feed water flow         (m³/h) [u_SFW]
+
+    Output vector y (ny=7)
+    ----------------------
+    y[0]  charge_fill_fraction  mill charge fill fraction    (-)    [y_JT]
+    y[1]  mill_power            mill power draw              (MW)   [y_Pmill]
+    y[2]  sump_level            sump level                   (%)    [y_SLEV]
+    y[3]  sump_density          sump discharge density       (t/m³) [y_rho]
+    y[4]  product_size          product particle size (PSE)  (%)    [y_PSE]
+    y[5]  cyclone_feed_flow     cyclone feed pump flow (controlled)  (m³/h) [u_CFF]
+    y[6]  feed_ore_rate         mill feed ore rate (controlled)      (t/h)  [u_MFO]
+
     Returns
     -------
     StateSpaceModelCT
-        n=7 states, nu=3 inputs (water_ore_ratio, critical_speed_fraction,
-        sump_feed_water), ny=7 outputs (original 5 plus cyclone_feed_flow
-        and feed_ore_rate so both controller actions can be monitored).
+        Continuous-time state-space model with n=7, nu=3, ny=7.
     """
 
     K_c_mfo = 1 / CHARGE_LEVEL_PLANT_GAIN
@@ -703,34 +807,40 @@ def build_grinding_circuit_model_with_level_control(
     u = cas.SX.sym("u", N_CL_INPUTS)
 
     # Sump level (%) from state — same formula as base model eq. (10)
-    x_sw = x[4]  # sump water volume (m³)
-    x_ss = x[5]  # sump solids volume (m³)
-    y_SLEV_ctrl = 100.0 * (x_sw + x_ss) / sump_volume
+    sump_water_volume = x[4]
+    sump_solids_volume = x[5]
+    sump_level_ctrl = (
+        100.0 * (sump_water_volume + sump_solids_volume) / sump_volume
+    )
 
     # Sump level P controller with saturation
-    u_CFF = cas.fmin(
-        float(cff_max), cas.fmax(0.0, Kc_sump * (y_SLEV_ctrl - sump_level_min))
+    cyclone_feed_flow = cas.fmin(
+        float(cff_max),
+        cas.fmax(0.0, Kc_sump * (sump_level_ctrl - sump_level_min)),
     )
 
     # Charge level from state — same formula as base model eq. (5)
-    x_mw = x[0]
-    x_ms = x[1]
-    x_mr = x[2]
+    water_volume = x[0]
+    solids_volume = x[1]
+    rock_volume = x[2]
     ball_volume = base.params.get("ball_volume", ball_volume)
     mill_volume = base.params.get("mill_volume", mill_volume)
-    y_JT = (x_mw + x_ms + x_mr + ball_volume) / mill_volume
+    charge_fill_fraction = (
+        water_volume + solids_volume + rock_volume + ball_volume
+    ) / mill_volume
 
-    # Charge level P Controller with saturation
-    u_mfo = cas.fmin(
+    # Charge level P controller with saturation
+    feed_ore_rate = cas.fmin(
         float(mfo_max),
         cas.fmax(
             float(mfo_min),
-            mfo_nop + K_c_mfo * (charge_fill_fraction_sp - y_JT),
+            mfo_nop
+            + K_c_mfo * (charge_fill_fraction_sp - charge_fill_fraction),
         ),
     )
 
     # Full 5-element input vector for the base model
-    u_full = cas.vertcat(u_mfo, u, u_CFF)
+    u_full = cas.vertcat(feed_ore_rate, u, cyclone_feed_flow)
     assert u_full.shape == (N_INPUTS, 1)
 
     # Compose with base model (calling a CasADi Function with SX args returns SX)
@@ -739,7 +849,7 @@ def build_grinding_circuit_model_with_level_control(
     y_base = base.h(t, x, u_full, *sym_params.values())
 
     # Append additional output variables for monitoring controller actions
-    y_cl = cas.vertcat(y_base, u_CFF, u_mfo)
+    y_cl = cas.vertcat(y_base, cyclone_feed_flow, feed_ore_rate)
     assert y_cl.shape == (N_CL_OUTPUTS, 1)
 
     f_func = cas.Function(

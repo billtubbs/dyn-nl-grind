@@ -88,9 +88,26 @@ See [`open_loop_sim.py`](open_loop_sim.py) for a complete simulation script with
 
 ---
 
+## Scripts
+
+| Script | Description |
+|---|---|
+| [`open_loop_sim.py`](open_loop_sim.py) | Simulates the grinding circuit with sump level control from the paper's NOP, applies a feed ore step change, and saves a multi-panel plot. |
+| [`steady_state_io.py`](steady_state_io.py) | Sweeps each input over a range via warm-start Newton continuation to produce steady-state I/O gain curves. Run as a script to plot the full I/O map for the base model. |
+| [`step_response_io.py`](step_response_io.py) | Runs multi-level step responses from steady state for each input and plots the output deviation matrix. Run as a script for the base model. |
+| [`feed_step_time_constants.py`](feed_step_time_constants.py) | Estimates first-order time constants for the charge fill fraction response to six feed rate step changes of varying size and direction. |
+| [`inspect_sim_result.py`](inspect_sim_result.py) | Loads a simulation result CSV, slices to a configurable time window, and plots selected state/input/output variables. |
+| [`plot_phi_formula.py`](plot_phi_formula.py) | Plots the rheology factor φ (eq. 3) comparing the original paper formula against the smooth softplus approximation used in the model. |
+| [`plot_power_model.py`](plot_power_model.py) | Plots mill power draw vs. charge fill fraction (eq. 6) at several critical-speed fractions, holding charge composition at the NOP. |
+
+---
+
 ## Model Documentation
 
-> All equations and parameter definitions below follow Section 2.2 of the paper.
+> All equations and parameter definitions below follow Section 2.2 of the paper,
+> with one modification: the rheology factor φ (eq. 3) is replaced by a smooth
+> C∞ softplus approximation to avoid the derivative discontinuity at the
+> threshold — see [`calculate_rheology_factor_smoothed`](src/model.py) for details.
 
 ## Mill Model
 
@@ -141,6 +158,18 @@ where $\varepsilon_0 = 0.60$ is the approximate maximum fraction of solids by vo
 the slurry at zero slurry flow. The slurry is pure water ($\varphi = 1$) when
 $x_{ms}/x_{mw} = 0$ and becomes a non-flowing mud ($\varphi = 0$) when
 $x_{ms}/x_{mw} = 1.5$.
+
+**Smoothed implementation.** The conditional in eq. (3) introduces a derivative
+discontinuity that can cause problems with gradient-based optimisers and stiff ODE
+integrators. The model therefore replaces $\max(0,\,\cdot)$ with the softplus
+function, giving a C∞ approximation:
+
+$$\varphi_\beta = \sqrt{\frac{1}{\beta}\ln\!\left(1+\exp\!\left(\beta\left(1 - \left(\varepsilon_0^{-1}-1\right)\frac{x_{ms}}{x_{mw}}\right)\right)\right)} \tag{3$'$}$$
+
+where $\beta$ is a sharpness parameter (default $\beta = 20$). As $\beta \to \infty$
+this converges to eq. (3). A numerically stable evaluation avoids overflow via
+$\ln(1+e^z) = \max(z,0) + \ln(1+e^{-|z|})$.
+See `calculate_rheology_factor_smoothed` in [`src/model.py`](src/model.py).
 
 ### Rock Consumption and Fines Production (Equations 4a–4b)
 
