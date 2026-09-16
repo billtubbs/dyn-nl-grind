@@ -13,8 +13,8 @@ and may warrant further investigation of the cyclone sub-model.
 
 import numpy as np
 import pytest
-
 from cas_models.continuous_time.simulate import make_steady_state_solver
+
 from model import (
     INPUT_NAMES,
     OUTPUT_NAMES,

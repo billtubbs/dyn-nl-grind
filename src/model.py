@@ -101,9 +101,7 @@ DELTA_SOLIDS = 0.0911  # δ_s: power param, solids fraction    — Table 5
 DELTA_VOLUME = 0.0911  # δ_v: power param, mill fill volume   — Table 5
 DISCHARGE_RATE = 114.7  # d_q (h⁻¹): mill discharge rate       — Table 5
 EPSILON_ZERO = 0.60  # ε₀: max solids fraction at zero flow  — paper text
-FILL_FRACTION_MAX_POWER = (
-    0.23  # J_TPmax: fill fraction at max power  — Table 4
-)
+FILL_FRACTION_MAX_POWER = 0.23  # J_TPmax: fill fraction at max power  — Table 4
 K_FINES_PRODUCTION = 15.0e-3  # K_FP (MWh/t): fines production        — Table 5
 K_FINES_PRODUCTION_JT = 20.0  # K_FPjt: fines-production fill sens.   — Table 5
 K_ROCK_CONSUMPTION = 5.97e-3  # K_RC (MWh/t): rock consumption        — Table 5
@@ -515,7 +513,7 @@ def build_grinding_circuit_model(
         ["y"],
     )
 
-    return StateSpaceModelCT(
+    model = StateSpaceModelCT(
         f_func,
         h_func,
         n=N_STATES,
@@ -527,6 +525,7 @@ def build_grinding_circuit_model(
         input_names=INPUT_NAMES,
         output_names=OUTPUT_NAMES,
     )
+    return model
 
 
 def build_grinding_circuit_model_with_sump_control(
@@ -600,9 +599,7 @@ def build_grinding_circuit_model_with_sump_control(
         level_ss = OUTPUTS_NOP["sump_level"]
         cff_max = u_cff_ss * (level_max - level_min) / (level_ss - level_min)
 
-    base = build_grinding_circuit_model(
-        sump_volume=sump_volume, **model_kwargs
-    )
+    base = build_grinding_circuit_model(sump_volume=sump_volume, **model_kwargs)
 
     # Closed-loop model (sump level controller): u_CFF is internal, shown as output
     CL_INPUT_NAMES = INPUT_NAMES.copy()
