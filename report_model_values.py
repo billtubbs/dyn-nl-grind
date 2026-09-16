@@ -66,7 +66,7 @@ def make_rows():
     return rows
 
 
-def main(output_path="model_test_results.csv"):
+def main(output_path="results/model_test_results.csv"):
     path = Path(output_path)
     with path.open("w", newline="") as report_file:
         writer = csv.writer(report_file)
