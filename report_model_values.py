@@ -1,4 +1,4 @@
-"""Write paper-point model calculations to a readable CSV report."""
+"""Write computed normal-operating-point values to a readable CSV report."""
 
 import csv
 from pathlib import Path
@@ -52,15 +52,15 @@ def make_rows():
             ["rhs", f"d_{name}_dt", "m3/h", rhs[index], 0.0, rhs[index]]
         )
     for name, value in zip(OUTPUT_NAMES, outputs):
-        paper_value = OUTPUTS_NOP[name]
+        nop_value = OUTPUTS_NOP[name]
         rows.append(
             [
                 "output",
                 name,
                 UNITS[name],
                 value,
-                paper_value,
-                value - paper_value,
+                nop_value,
+                value - nop_value,
             ]
         )
     return rows
@@ -71,7 +71,7 @@ def main(output_path="results/model_test_results.csv"):
     with path.open("w", newline="") as report_file:
         writer = csv.writer(report_file)
         writer.writerow(
-            ["category", "variable", "units", "computed", "paper", "difference"]
+            ["category", "variable", "units", "computed", "NOP", "difference"]
         )
         writer.writerows(make_rows())
     print(f"Wrote {path}")

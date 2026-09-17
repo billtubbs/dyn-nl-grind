@@ -59,33 +59,33 @@ OUTPUT_NAMES = [
 CL_INPUT_NAMES = [n for n in INPUT_NAMES if n != "cyclone_feed_flow"]
 CL_OUTPUT_NAMES = OUTPUT_NAMES + ["cyclone_feed_flow"]
 
-# Normal operating point (NOP) — inputs from Table 4 (Le Roux & Steyn, 2022).
-# States and outputs are solver-computed from these inputs; the paper's rounded
-# values (Tables 4 & 5) are kept in tests/test_model.py for approx. validation.
+# Normal operating point (NOP). Exogenous inputs come from Table 4 (Le Roux &
+# Steyn, 2022); cyclone_feed_flow, states, and outputs are solver-computed for
+# the sump-level-controlled model. Rounded paper values remain in the tests.
 INPUTS_NOP = {
     "feed_ore_rate": 1191.0,  # u_MFO  (t/h)
     "water_ore_ratio": 0.572,  # u_rMIW (-)
     "critical_speed_fraction": 0.768,  # u_phic (-)
     "sump_feed_water": 870.0,  # u_SFW  (m³/h)
-    "cyclone_feed_flow": 2921.0,  # u_CFF  (m³/h)
+    "cyclone_feed_flow": 2913.26709125,  # u_CFF  (m³/h)
 }
 
 STATES_NOP = {
-    "water_volume": 30.789,  # x_mw  (m³)
-    "solids_volume": 30.723,  # x_ms  (m³)
-    "rock_volume": 9.6708,  # x_mr  (m³)
-    "fines_volume": 5.2661,  # x_mf  (m³)
-    "sump_water_volume": 132.87,  # x_sw  (m³)
-    "sump_solids_volume": 71.641,  # x_ss  (m³)
-    "sump_fines_volume": 12.280,  # x_sf  (m³)
+    "water_volume": 30.7846209391,  # x_mw  (m³)
+    "solids_volume": 30.7172414066,  # x_ms  (m³)
+    "rock_volume": 9.66882790238,  # x_mr  (m³)
+    "fines_volume": 5.26596130693,  # x_mf  (m³)
+    "sump_water_volume": 132.866872718,  # x_sw  (m³)
+    "sump_solids_volume": 71.6377433137,  # x_ss  (m³)
+    "sump_fines_volume": 12.2811023103,  # x_sf  (m³)
 }
 
 OUTPUTS_NOP = {
-    "charge_fill_fraction": 0.3257,  # y_JT   (-)
-    "mill_power": 14.85,  # y_Pmill (MW)
-    "sump_level": 59.27,  # y_SLEV  (%)
-    "sump_density": 1.771,  # y_rho   (t/m³)
-    "product_size": 35.51,  # y_PSE   (%)
+    "charge_fill_fraction": 0.325699187,  # y_JT   (-)
+    "mill_power": 14.8495691476,  # y_Pmill (MW)
+    "sump_level": 59.1395650756,  # y_SLEV  (%)
+    "sump_density": 1.77065759369,  # y_rho   (t/m³)
+    "product_size": 35.512990988,  # y_PSE   (%)
 }
 
 # ── Default model parameters (Tables 4 & 5, Le Roux & Steyn 2022) ────────────

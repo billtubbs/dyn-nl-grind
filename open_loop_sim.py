@@ -8,12 +8,12 @@ Run:
 
 import os
 
-import numpy as np
 import matplotlib.pyplot as plt
-
+import numpy as np
 from cas_models.continuous_time.simulate import (
     make_n_step_simulation_function_from_model,
 )
+
 from model import (
     CL_INPUT_NAMES,
     CL_OUTPUT_NAMES,
@@ -105,9 +105,7 @@ input_units = ["t/h", "-", "-", "m³/h"]
 fig2, axes2 = plt.subplots(3, 2, figsize=(8, 5.85), sharex=True)
 axes2 = axes2.flatten()
 
-for i, (ax, name, unit) in enumerate(
-    zip(axes2, CL_OUTPUT_NAMES, output_units)
-):
+for i, (ax, name, unit) in enumerate(zip(axes2, CL_OUTPUT_NAMES, output_units)):
     ax.plot(t_eval, Y[:, i], color=f"C{i}")
     ax.axvline(T_STEP_H, color="k", linestyle=":", linewidth=0.8)
     ax.set_title(name, fontsize=9)
